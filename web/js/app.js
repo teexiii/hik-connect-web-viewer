@@ -29,7 +29,7 @@ function listOffline(cameras) {
   box.hidden = !cameras.length;
   box.replaceChildren(...cameras.map((camera) => {
     const row = document.createElement('div');
-    row.innerHTML = '<strong></strong> · offline';
+    row.innerHTML = '<strong></strong> · đang offline';
     row.querySelector('strong').textContent = camera.name;
     return row;
   }));
@@ -46,8 +46,23 @@ grid.load().then(({ online, offline }) => {
   document.querySelector('#grid').textContent = `Không tải được danh sách camera: ${err.message}`;
 });
 
+// Wall clock in the header and over the video, like a recorder's timecode.
+const clocks = document.querySelectorAll('[data-clock]');
+const tick = () => {
+  const now = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+  for (const el of clocks) el.textContent = now;
+};
+tick();
+setInterval(tick, 1000);
+
 const menu = document.querySelector('#menu');
-document.querySelector('#menu-button').addEventListener('click', () => { menu.hidden = !menu.hidden; });
+document.querySelector('#menu-button').addEventListener('click', (event) => {
+  event.stopPropagation();
+  menu.hidden = !menu.hidden;
+});
+document.addEventListener('click', (event) => {
+  if (!menu.hidden && !menu.contains(event.target)) menu.hidden = true;
+});
 
 document.querySelector('#logout').addEventListener('click', async () => {
   await postJson('/api/logout');

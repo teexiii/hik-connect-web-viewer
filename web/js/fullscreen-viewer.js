@@ -3,6 +3,7 @@ import { getJson, postJson, saveFile } from './api-client.js';
 import { LiveTile, STATUS_LABEL } from './live-tile.js';
 
 const CLIP_POLL_MS = 2000;
+const CHROME_HIDE_MS = 4000;
 
 export class FullscreenViewer {
   constructor(root, onClose) {
@@ -16,12 +17,15 @@ export class FullscreenViewer {
     this.q('.snapshot').addEventListener('click', () => this.snapshot());
     this.q('.clip').addEventListener('click', () => this.clip());
     this.q('.retry').addEventListener('click', () => this.tile?.retry());
+    this.q('.live').addEventListener('click', () => this.toggleChrome());
+    this.q('.viewer-bottom').addEventListener('click', () => this.showChrome());
   }
 
   open(camera) {
     this.camera = camera;
     this.q('.title').textContent = camera.name;
     this.q('.live').replaceChildren();
+    delete this.root.dataset.state;
     this.setStatus('connecting');
     this.root.hidden = false;
     this.tile = new LiveTile(this.q('.live'), camera, (state) => this.setStatus(state));
@@ -31,19 +35,41 @@ export class FullscreenViewer {
   close() {
     this.tile?.stop();
     this.tile = null;
+    clearTimeout(this.chromeTimer);
     this.root.hidden = true;
     this.toast('');
     this.onClose();
   }
 
   setStatus(state) {
-    this.q('.status').textContent = STATUS_LABEL[state] ?? state;
+    if (state === this.root.dataset.state) return; // the watchdog repeats 'live' every second
+    const label = state === 'live' ? 'LIVE' : (STATUS_LABEL[state] ?? state);
+    this.q('.status').textContent = label;
+    this.q('.veil-text').textContent = STATUS_LABEL[state] ?? '';
     this.root.dataset.state = state;
     this.q('.retry').hidden = state !== 'failed';
+    this.showChrome();
+  }
+
+  /** Overlay controls fade out after a few seconds of live video; a tap on the picture brings them back. */
+  showChrome() {
+    clearTimeout(this.chromeTimer);
+    this.root.dataset.chrome = 'on';
+    if (this.root.dataset.state !== 'live') return;
+    this.chromeTimer = setTimeout(() => { this.root.dataset.chrome = 'off'; }, CHROME_HIDE_MS);
+  }
+
+  toggleChrome() {
+    if (this.root.dataset.chrome === 'off') this.showChrome();
+    else {
+      clearTimeout(this.chromeTimer);
+      this.root.dataset.chrome = 'off';
+    }
   }
 
   toast(text) {
     this.q('.toast').textContent = text;
+    if (text) this.showChrome();
   }
 
   async refresh() {

@@ -3,46 +3,64 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0e1116">
+  <meta name="theme-color" content="#0a0c0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Camera</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap&subset=vietnamese">
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
   <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
   <header class="bar">
-    <h1>Camera</h1>
-    <button id="menu-button" class="icon" aria-label="Tuỳ chọn">⋯</button>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><i class="ph-fill ph-video-camera"></i></span>
+      <h1>Camera</h1>
+    </div>
+    <span class="clock mono" data-clock aria-hidden="true">--:--:--</span>
+    <button id="menu-button" class="icon ghost" aria-label="Tuỳ chọn" aria-haspopup="true"><i class="ph ph-dots-three-outline"></i></button>
     <div id="menu" class="menu" hidden>
       <div id="offline-list" class="offline-list" hidden></div>
-      <button id="logout">Đăng xuất</button>
+      <button id="logout" class="menu-item"><i class="ph ph-sign-out"></i>Đăng xuất</button>
     </div>
   </header>
   <div id="banner" class="banner" role="alert" hidden>
+    <i class="ph ph-warning-circle" aria-hidden="true"></i>
     <span id="banner-text"></span>
-    <button id="banner-retry">Thử lại</button>
+    <button id="banner-retry" class="pill">Thử lại</button>
   </div>
-  <main id="grid" class="grid" aria-live="polite">Đang tải…</main>
+  <main id="grid" class="grid" aria-live="polite"><p class="empty">Đang tải camera…</p></main>
 
-  <section id="viewer" class="viewer" hidden>
-    <div class="viewer-top">
-      <button class="back icon" aria-label="Quay lại">←</button>
-      <span class="title"></span>
+  <section id="viewer" class="viewer" data-chrome="on" hidden>
+    <div class="live"></div>
+    <div class="veil" aria-hidden="true"><span class="spinner"></span><span class="veil-text"></span></div>
+    <button class="retry pill solid" hidden><i class="ph ph-arrow-clockwise"></i>Thử lại</button>
+
+    <div class="viewer-top chrome">
+      <button class="back icon ghost" aria-label="Quay lại"><i class="ph ph-caret-left"></i></button>
+      <div class="viewer-heading">
+        <span class="title"></span>
+        <span class="clock mono" data-clock>--:--:--</span>
+      </div>
       <span class="status"></span>
     </div>
-    <div class="live"></div>
-    <button class="retry" hidden>Thử lại</button>
-    <div class="viewer-bottom">
+
+    <div class="viewer-bottom chrome">
       <div class="toast" role="status"></div>
       <div class="actions">
-        <button class="refresh">Làm mới</button>
-        <button class="snapshot">Chụp ảnh</button>
-        <span class="clip-group">
+        <button class="refresh action"><i class="ph ph-arrows-clockwise"></i><span>Làm mới</span></button>
+        <button class="snapshot action"><i class="ph ph-camera"></i><span>Chụp ảnh</span></button>
+        <div class="clip-group">
+          <button class="clip action record"><i class="ph-fill ph-record"></i><span>Ghi clip</span></button>
           <select class="clip-seconds" aria-label="Độ dài clip">
             <option value="10">10 giây</option>
             <option value="30" selected>30 giây</option>
             <option value="60">60 giây</option>
           </select>
-          <button class="clip">Ghi clip</button>
-        </span>
+        </div>
       </div>
     </div>
   </section>

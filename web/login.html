@@ -3,21 +3,29 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0e1116">
+  <meta name="theme-color" content="#0a0c0f">
   <title>Đăng nhập camera</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap&subset=vietnamese">
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
   <link rel="stylesheet" href="/css/app.css">
 </head>
 <body class="login-page">
   <form id="login" class="login" autocomplete="on">
-    <h1>Camera</h1>
+    <div class="login-head">
+      <span class="brand-mark large" aria-hidden="true"><i class="ph-fill ph-video-camera"></i></span>
+      <h1>Camera nhà</h1>
+      <p class="hint">Đăng nhập một lần, lần sau mở là xem ngay.</p>
+    </div>
     <p id="error" class="error" role="alert" hidden></p>
     <label>Tên đăng nhập
-      <input name="username" autocomplete="username" required autocapitalize="none">
+      <input name="username" autocomplete="username" required autocapitalize="none" spellcheck="false">
     </label>
     <label>Mật khẩu
       <input name="password" type="password" autocomplete="current-password" required>
     </label>
-    <button type="submit" id="submit">Đăng nhập</button>
+    <button type="submit" id="submit" class="primary">Đăng nhập</button>
   </form>
   <script type="module" src="/js/login.js"></script>
 </body>
