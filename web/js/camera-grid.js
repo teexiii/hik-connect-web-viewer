@@ -5,9 +5,10 @@ import { LiveTile, STATUS_LABEL } from './live-tile.js';
 const OFFLINE_RETRY_MS = 60000;
 
 export class CameraGrid {
-  constructor(root, onOpen) {
+  constructor(root, onOpen, onAccount) {
     this.root = root;
     this.onOpen = onOpen;
+    this.onAccount = onAccount;
     this.cards = new Map(); // camera id -> { camera, el, tile, visible, offlineUntil }
     this.paused = false;
     this.observer = new IntersectionObserver((entries) => {
@@ -19,12 +20,17 @@ export class CameraGrid {
     }, { threshold: 0.3 });
   }
 
+  /** Renders cards for cameras not known to be offline; returns both groups. */
   async load() {
     const cameras = await getJson('/api/cameras');
+    const online = cameras.filter((camera) => camera.online !== false);
+    const offline = cameras.filter((camera) => camera.online === false);
     this.root.replaceChildren();
-    if (!cameras.length) this.root.innerHTML = '<p class="empty">Tài khoản chưa có camera nào.</p>';
-    for (const camera of cameras) this.add(camera);
+    if (!online.length) this.root.innerHTML = '<p class="empty">Không có camera nào đang online.</p>';
+    for (const camera of online) this.add(camera);
+    this.pollStatus();
     setInterval(() => this.pollStatus(), 5000);
+    return { online, offline };
   }
 
   add(camera) {
@@ -74,10 +80,7 @@ export class CameraGrid {
     } catch {
       return;
     }
-    if (status.account.status === 'needs_login' || status.account.status === 'captcha') {
-      location.href = `/login.html?reason=${status.account.status}`;
-      return;
-    }
+    this.onAccount(status.account);
     for (const card of this.cards.values()) {
       if (status.streams[card.camera.id]?.state === 'offline' && card.tile) {
         card.tile.stop();

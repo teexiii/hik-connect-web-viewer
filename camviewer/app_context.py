@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 import httpx
 
 from camviewer.account_state import AccountState
 from camviewer.clip_recorder import ClipRecorder
-from camviewer.credential_store import CredentialStore
 from camviewer.go2rtc_client import Go2RtcClient
 from camviewer.hik_account import HikAccount
 from camviewer.live_ingest_manager import LiveIngestManager
@@ -20,7 +20,6 @@ from camviewer.settings import Settings
 class AppContext:
     settings: Settings
     state: AccountState
-    store: CredentialStore
     account: HikAccount
     manager: LiveIngestManager
     signer: SessionSigner
@@ -28,6 +27,7 @@ class AppContext:
     go2rtc: Go2RtcClient
     clips: ClipRecorder
     http: httpx.AsyncClient
+    login_task: asyncio.Task[None] | None = None
 
 
 def build_context(settings: Settings, account: HikAccount | None = None) -> AppContext:
@@ -37,7 +37,6 @@ def build_context(settings: Settings, account: HikAccount | None = None) -> AppC
     return AppContext(
         settings=settings,
         state=account.state,
-        store=CredentialStore(settings.data_dir, settings.secret_key),
         account=account,
         manager=LiveIngestManager(
             account,
@@ -49,6 +48,6 @@ def build_context(settings: Settings, account: HikAccount | None = None) -> AppC
         signer=SessionSigner(settings.session_secret),
         limiter=LoginRateLimiter(),
         go2rtc=Go2RtcClient(settings.go2rtc_url, settings.internal_ts_base, http),
-        clips=ClipRecorder(settings.data_dir, settings.go2rtc_rtsp_url),
+        clips=ClipRecorder(settings.data_dir, settings.internal_ts_base),
         http=http,
     )

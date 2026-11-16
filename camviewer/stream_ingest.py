@@ -183,7 +183,7 @@ class StreamIngest:
         if kind == "auth":
             self._auth_streak += 1
             if self._auth_streak >= AUTH_STREAK_LIMIT:
-                self.account.state.mark_needs_login()
+                self.account.state.mark_needs_attention("auth")
             else:
                 try:
                     self.account.relogin()

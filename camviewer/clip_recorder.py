@@ -1,4 +1,4 @@
-"""Background clip recording from go2rtc's RTSP restream into DATA_DIR/clips."""
+"""Background clip recording from the internal MPEG-TS source into DATA_DIR/clips."""
 
 from __future__ import annotations
 
@@ -24,9 +24,9 @@ class ClipBusy(Exception):
 
 
 class ClipRecorder:
-    def __init__(self, data_dir: Path, rtsp_base: str, ffmpeg_path: str = "ffmpeg") -> None:
+    def __init__(self, data_dir: Path, ts_base: str, ffmpeg_path: str = "ffmpeg") -> None:
         self._dir = data_dir / "clips"
-        self._rtsp = rtsp_base.rstrip("/")
+        self._ts_base = ts_base.rstrip("/")
         self._ffmpeg = ffmpeg_path
         self._jobs: dict[str, dict[str, Any]] = {}
         self._tasks: set[asyncio.Task[None]] = set()
@@ -49,7 +49,7 @@ class ClipRecorder:
         out = self._dir / f"{job_id}.mp4"
         cmd = [
             self._ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-            "-rtsp_transport", "tcp", "-i", f"{self._rtsp}/{stream_id}",
+            "-i", f"{self._ts_base}/internal/ts/{stream_id}",
             "-t", str(seconds), "-c", "copy", "-tag:v", "hvc1",
             "-movflags", "+faststart", str(out),
         ]  # fmt: skip

@@ -43,14 +43,14 @@ def test_login_bad_password_raises_and_keeps_state(state):
     account = HikAccount(state, client_factory=lambda: FakeClient(AuthenticationError("bad")))
     with pytest.raises(AuthError):
         account.login("u", "p")
-    assert state.status == "no_account"
+    assert state.status == "connecting"
 
 
 def test_login_captcha(state):
     account = HikAccount(state, client_factory=lambda: FakeClient(CaptchaRequiredError("c")))
     with pytest.raises(CaptchaError):
         account.login("u", "p")
-    assert state.status == "captcha"
+    assert state.status == "needs_attention" and state.reason == "captcha"
 
 
 def test_cameras_cached_until_forced(state):
@@ -77,7 +77,7 @@ def test_relogin_failures_trip_breaker(state, monkeypatch):
     for _ in range(3):
         with pytest.raises(AuthError):
             good.relogin()
-    assert state.status == "needs_login"
+    assert state.status == "needs_attention" and state.reason == "auth"
     with pytest.raises(AuthError):
         good.relogin()
 
@@ -103,12 +103,20 @@ def test_open_stream_uses_main_stream_type(state):
     assert seen["stream_type"] == StreamType.MAIN
 
 
-def test_forget_clears_everything(state):
-    account = HikAccount(state, client_factory=FakeClient)
+def test_online_map_reads_device_status(state):
+    class StatusClient(FakeClient):
+        def request_json(self, method, path, params=None):
+            return {
+                "deviceInfos": [
+                    {"deviceSerial": "A", "status": 1},
+                    {"deviceSerial": "B", "status": 2},
+                ]
+            }
+
+    account = HikAccount(state, client_factory=StatusClient)
+    assert account.online_map() == {}  # not logged in
     account.login("u", "p")
-    account.forget()
-    assert account.cameras() == [] and account.username is None
-    assert state.status == "no_account"
+    assert account.online_map() == {"A": True, "B": False}
 
 
 def test_classify():

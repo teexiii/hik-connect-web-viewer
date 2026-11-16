@@ -94,3 +94,11 @@ video-stream video { background: #000; }
 .login button { background: var(--accent); border: 0; color: #031124; font-weight: 600; }
 .hint { color: var(--muted); margin: 0; }
 .error { margin: 0; padding: 10px 12px; border-radius: 10px; background: rgba(239,91,91,.15); color: #ffb3b3; }
+
+.banner {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  background: rgba(245,185,66,.15); color: var(--warn); border-bottom: 1px solid var(--line);
+}
+.banner span { flex: 1; font-size: 14px; }
+.offline-list { color: var(--muted); font-size: 14px; display: grid; gap: 4px; }
+.offline-list strong { color: var(--text); }

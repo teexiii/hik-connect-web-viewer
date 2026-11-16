@@ -14,7 +14,7 @@ def test_camera_list_shape(logged_in):
             "name": "Cam One",
             "serial": "SER1",
             "channel": 1,
-            "online": None,
+            "online": True,
             "streams": {"hevc": "SER1_1", "h264": "SER1_1_h264"},
         }
     ]
@@ -23,7 +23,7 @@ def test_camera_list_shape(logged_in):
 def test_status_reports_account_and_streams(logged_in):
     client, _, _ = logged_in
     body = client.get("/api/status").json()
-    assert body["account"] == {"status": "ok", "username": "tee"}
+    assert body["account"] == {"status": "ok", "reason": ""}
     assert body["streams"] == {}
 
 
@@ -52,7 +52,7 @@ def test_clip_validation_and_unknown_job(logged_in):
 
 
 async def test_clip_recorder_limits_and_cleanup(tmp_path):
-    recorder = ClipRecorder(tmp_path, "rtsp://127.0.0.1:1", ffmpeg_path="nonexistent-ffmpeg")
+    recorder = ClipRecorder(tmp_path, "http://127.0.0.1:1", ffmpeg_path="nonexistent-ffmpeg")
     first = recorder.start("SER1_1", 10)
     recorder.start("SER1_1", 10)
     with pytest.raises(ClipBusy):
@@ -69,3 +69,9 @@ async def test_clip_recorder_limits_and_cleanup(tmp_path):
         (clips / f"{i:032x}.mp4").write_bytes(b"x")
     recorder.cleanup()
     assert len(list(clips.glob("*.mp4"))) <= 19
+
+
+def test_offline_device_is_reported_offline(logged_in):
+    client, _, account = logged_in
+    account.online = {"SER1": False}
+    assert client.get("/api/cameras").json()[0]["online"] is False

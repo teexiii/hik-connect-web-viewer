@@ -26,6 +26,7 @@ log = logging.getLogger("camviewer.account")
 CAMERA_TTL_SECONDS = 300
 RELOGIN_MIN_INTERVAL = 30.0
 OPEN_TIMEOUT_SECONDS = 5.0
+ONLINE_TTL_SECONDS = 20.0
 
 
 class AuthError(Exception):
@@ -71,6 +72,8 @@ class HikAccount:
         self._cameras: list[Any] = []
         self._cameras_at = 0.0
         self._last_relogin = 0.0
+        self._online: dict[str, bool] = {}
+        self._online_at = -ONLINE_TTL_SECONDS
 
     @property
     def username(self) -> str | None:
@@ -84,7 +87,7 @@ class HikAccount:
             try:
                 client.login(creds)
             except CaptchaRequiredError as exc:
-                self.state.mark_captcha()
+                self.state.mark_needs_attention("captcha")
                 raise CaptchaError(str(exc)) from exc
             except AuthenticationError as exc:
                 raise AuthError(str(exc)) from exc
@@ -116,21 +119,38 @@ class HikAccount:
             try:
                 client.login(self._creds)
             except CaptchaRequiredError as exc:
-                self.state.mark_captcha()
+                self.state.mark_needs_attention("captcha")
                 raise CaptchaError(str(exc)) from exc
             except AuthenticationError as exc:
                 if self.state.record_auth_failure():
-                    log.warning("account moved to needs_login after repeated auth failures")
+                    log.warning("account needs attention after repeated auth failures")
                 raise AuthError(str(exc)) from exc
             self._swap_client(client)
             self.state.mark_ok()
 
-    def forget(self) -> None:
+    def online_map(self) -> dict[str, bool]:
+        """Device serial -> online, from the account's device list (cached briefly)."""
         with self._lock:
-            self._swap_client(None)
-            self._creds = None
-            self._cameras = []
-            self.state.mark_no_account()
+            if self._client is None:
+                return {}
+            if time.monotonic() - self._online_at < ONLINE_TTL_SECONDS:
+                return dict(self._online)
+            try:
+                payload = self._client.request_json(
+                    "GET",
+                    "/v3/userdevices/v1/devices/pagelist",
+                    params={"groupId": -1, "limit": 50, "offset": 0, "filter": "STATUS"},
+                )
+            except Exception:  # noqa: BLE001 - online flag is advisory only
+                log.debug("device status lookup failed")
+                return dict(self._online)
+            self._online = {
+                str(d["deviceSerial"]): d.get("status") == 1
+                for d in payload.get("deviceInfos") or []
+                if d.get("deviceSerial")
+            }
+            self._online_at = time.monotonic()
+            return dict(self._online)
 
     def cameras(self, *, force: bool = False) -> list[Any]:
         with self._lock:

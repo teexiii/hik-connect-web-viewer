@@ -9,9 +9,9 @@ import httpx
 log = logging.getLogger("camviewer.go2rtc")
 
 
-def stream_names(stream_id: str) -> dict[str, str]:
-    """Stream name -> go2rtc source for one camera (HEVC passthrough + h264 transcode)."""
-    return {stream_id: "", f"{stream_id}_h264": f"ffmpeg:{stream_id}#video=h264"}
+def stream_names(stream_id: str) -> tuple[str, str]:
+    """(HEVC passthrough name, H.264 transcode name) for one camera."""
+    return stream_id, f"{stream_id}_h264"
 
 
 class Go2RtcClient:
@@ -21,7 +21,10 @@ class Go2RtcClient:
         self._http = http
 
     def source_for(self, stream_id: str, name: str) -> str:
-        return f"{self._ts_base}/internal/ts/{stream_id}" if name == stream_id else name
+        """Both streams read our MPEG-TS directly; going through go2rtc's own RTSP would route
+        HEVC through its RTP payloader, which panics on this camera's stream."""
+        ts_url = f"{self._ts_base}/internal/ts/{stream_id}"
+        return ts_url if name == stream_id else f"ffmpeg:{ts_url}#video=h264"
 
     async def existing(self) -> set[str]:
         response = await self._http.get(f"{self._api}/api/streams")
@@ -37,12 +40,12 @@ class Go2RtcClient:
             return 0
         added = 0
         for stream_id in stream_ids:
-            for name, src in stream_names(stream_id).items():
+            for name in stream_names(stream_id):
                 if name in present:
                     continue
-                source = src or self.source_for(stream_id, name)
                 response = await self._http.put(
-                    f"{self._api}/api/streams", params={"name": name, "src": source}
+                    f"{self._api}/api/streams",
+                    params={"name": name, "src": self.source_for(stream_id, name)},
                 )
                 if response.is_success:
                     added += 1

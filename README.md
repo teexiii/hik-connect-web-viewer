@@ -1,12 +1,15 @@
 # camviewer
 
-Mobile-first web viewer for Hik-Connect cloud cameras: log in with a Hik-Connect account, see a camera grid, tap for fullscreen live view, take snapshots and record clips. Live video reconnects on its own when the cloud session times out.
+Mobile-first web viewer for Hik-Connect cloud cameras: sign in to the web app, land in the live view (grid only when more than one camera is online), take snapshots and record clips. Live video reconnects on its own when the cloud session times out.
 
 ## Read this first
 
 - It talks to Hik-Connect through the **unofficial** library [`hikcloudstream`](https://pypi.org/project/hikcloudstream/) (version pinned in `uv.lock`). This is not an approved Hikvision integration and may break or violate the service terms. Use it only with your own account and cameras.
-- The Hik-Connect password is stored on the server, encrypted with a Fernet key (`CAMVIEWER_SECRET_KEY`) in `DATA_DIR/credentials.enc`. Anyone with both the file and the key can read it. Use LAN-only access; do not expose the port to the internet without HTTPS and an auth layer (the session cookie is not `Secure` on plain HTTP).
-- Cameras that sit on Wi-Fi without LAN RTSP are reached through Hik-Connect's cloud relay (VTM). Only the MAIN stream carries data on the tested camera (HEVC 1280x720, 15 fps).
+- Two separate accounts:
+  - the **app login** (`APP_USERNAME` + `APP_PASSWORD_HASH`) protects this website;
+  - the **Hik-Connect account** (`HIK_CONNECT_USER` + `HIK_CONNECT_PASSWORD`) is what the server logs in with at startup. Both live only in environment variables / the k8s Secret, never in the repo.
+- The session cookie (`camviewer_session`, HttpOnly, SameSite=Lax, `Secure` unless `COOKIE_SECURE=false`) lasts 400 days and is re-issued on every request, so an active browser never has to log in again. "Đăng xuất" revokes every issued cookie.
+- Cameras on Wi-Fi without LAN RTSP are reached through Hik-Connect's cloud relay. Only the MAIN stream carries data on the tested camera (HEVC 1280x720, 15 fps).
 
 ## How it works
 
@@ -16,25 +19,23 @@ phone --> app :8080 (login, API, static UI, allowlisted proxy) --> go2rtc (loopb
               +-- ingest per camera: Hik-Connect VTM session -> one long-lived ffmpeg -> MPEG-TS
 ```
 
-- One Hik-Connect login is shared by all cameras; ingest starts when the first viewer connects and stops 30 s after the last one leaves (`MAX_STREAMS`, default 3).
+- One Hik-Connect login is shared by all cameras; an ingest starts when the first viewer connects and stops 30 s after the last one leaves (`MAX_STREAMS`, default 3).
 - Reconnect layers: the ingest rotates the cloud session every 225 s (the cloud stops sending data around 240 s) and reopens within 2 s of a stall while keeping the same ffmpeg; go2rtc re-pulls the source; the browser watchdog restarts the player when the picture freezes.
 - The browser plays HEVC directly when it can (`{id}` stream) and falls back to a go2rtc H.264 transcode (`{id}_h264`). Add `?stream=hevc` or `?stream=h264` to the page URL to force one.
 - go2rtc listens on `127.0.0.1` only (its API can create `exec:` sources). The app proxies just the allowlisted routes and stream names after checking the session cookie and `Origin`.
+- Hik-Connect failures: three auth failures in a row or a CAPTCHA stop all retries and show a banner with a "Thử lại" button (it re-runs the login). A temporarily unreachable cloud is retried with back-off.
 
 ## Run locally (Docker)
 
 ```bash
-cp .env.example .env        # fill CAMVIEWER_SECRET_KEY and SESSION_SECRET (commands inside)
+cp .env.example .env
+uv run python -m camviewer.hash_password     # paste the output as APP_PASSWORD_HASH (single-quoted in .env)
+# fill APP_USERNAME, SESSION_SECRET, HIK_CONNECT_*; set COOKIE_SECURE=false for plain http
 docker compose up --build
-# open http://localhost:8080 and log in with the Hik-Connect account
+# open http://localhost:8080 (or HOST_PORT)
 ```
 
-Without Docker, install `ffmpeg`, run go2rtc yourself with `go2rtc.yaml`, then:
-
-```bash
-uv sync
-uv run python -m camviewer.main     # needs the two secrets in the environment
-```
+Without Docker: install `ffmpeg`, run go2rtc yourself with `go2rtc.yaml`, export the same variables and run `uv run python -m camviewer.main`.
 
 ## Test
 
@@ -43,32 +44,39 @@ uv run pytest
 uv run ruff check
 ```
 
-## Deploy to k3s (192.168.1.2)
+## Deploy to k3s (192.168.1.2) behind Cloudflare
 
-`deploy/k3s/deploy.sh` builds the image, ships it with the go2rtc image into k3s containerd, creates the secrets on the server on first run (never printed), applies `deploy/k3s/*.yaml` and waits for the rollout. The Pod holds both containers on one network namespace; the Service is a NodePort on **30092** (LAN only).
+Public URL `https://cam.ult.vn` terminates TLS at Cloudflare; nginx on the host proxies to the NodePort and must pass `Host`, `X-Forwarded-*` and WebSocket upgrade headers (the `Origin` check compares `Origin` to `Host`).
 
 ```bash
-bash deploy/k3s/deploy.sh
-curl http://192.168.1.2:30092/healthz
+# secrets file lives outside the repo, plain KEY=value lines, no quotes:
+#   SESSION_SECRET, APP_USERNAME, APP_PASSWORD_HASH, HIK_CONNECT_USER, HIK_CONNECT_PASSWORD
+CAMVIEWER_SECRETS_FILE=~/secrets/camviewer.env bash deploy/k3s/deploy.sh
 ```
+
+`deploy.sh` builds the image, ships it with the go2rtc image into k3s containerd, turns the secrets file into the `camviewer-secrets` Secret on the server (then deletes the copy), applies `deploy/k3s/*.yaml` and waits for the rollout. The Pod holds both containers on one network namespace; the Service is a NodePort on **30092**. Without `CAMVIEWER_SECRETS_FILE` the existing Secret is reused.
 
 ## Configuration
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `CAMVIEWER_SECRET_KEY` | required | Fernet key for the credential file |
+| `APP_USERNAME`, `APP_PASSWORD_HASH` | required | app login (hash from `python -m camviewer.hash_password`) |
 | `SESSION_SECRET` | required | signs session cookies |
-| `DATA_DIR` | `data` | credentials, state, clips |
+| `HIK_CONNECT_USER`, `HIK_CONNECT_PASSWORD` | none | Hik-Connect account used by the server |
+| `COOKIE_SECURE` | `true` | set `false` for plain-http local runs |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | proxies trusted for forwarded headers (`*` in the k3s manifest) |
+| `DATA_DIR` | `data` | state and clips |
 | `MAX_STREAMS` | `3` | concurrent camera ingests |
 | `IDLE_STOP_SECONDS` | `30` | stop an ingest after the last viewer leaves |
 | `STALL_SECONDS` | `2` | no data for this long reopens the cloud session |
 | `SESSION_ROTATE_SECONDS` | `225` | proactively rotate the cloud session |
-| `GO2RTC_URL`, `GO2RTC_RTSP_URL`, `INTERNAL_TS_BASE` | loopback defaults | internal endpoints |
+| `GO2RTC_URL`, `INTERNAL_TS_BASE` | loopback defaults | internal endpoints |
+
+Login attempts are limited to 10 per 5 minutes overall and 5 per 5 minutes per client IP (`CF-Connecting-IP` when present). That header is only trustworthy when the site is reachable solely through Cloudflare.
 
 ## Troubleshooting
 
-- **"Hik-Connect yêu cầu CAPTCHA" / HTTP 423**: open the official Hik-Connect app, log in once, then retry here. Repeated failed logins cause this; the app stops retrying after three auth failures and shows the login screen.
-- **Password changed in the app**: the stored password is rejected, the UI returns to the login page. Log in again with the new password (same account) to replace it.
-- **Camera shows offline**: the cloud reports no stream (session result 5404). The ingest backs off up to 60 s; check the camera's power and Wi-Fi.
-- **Video stuck on "Đang kết nối"**: try "Làm mới"; check `/api/status` for the stream state and `docker compose logs app`.
-- **Lost the Fernet key / switched accounts**: use the menu "Xoá tài khoản khỏi máy chủ" or delete `credentials.enc` from the data volume.
+- **Banner "Hik-Connect yêu cầu CAPTCHA"**: open the official Hik-Connect app, log in once, then press "Thử lại". Repeated failed logins cause this.
+- **Banner "Hik-Connect từ chối tài khoản"**: the password in the Secret is wrong or was changed. Update the Secret, restart the pod (or press "Thử lại" after the Secret reached the pod).
+- **Camera missing from the grid**: cameras the cloud reports offline are hidden and listed under the "⋯" menu.
+- **Video stuck on "Đang kết nối"**: try "Làm mới"; check `/api/status` for the stream state and the app logs.

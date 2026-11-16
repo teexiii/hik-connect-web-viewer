@@ -26,12 +26,27 @@ spec:
           env:
             - name: DATA_DIR
               value: /data
-            - name: CAMVIEWER_SECRET_KEY
-              valueFrom:
-                secretKeyRef: {name: camviewer-secrets, key: CAMVIEWER_SECRET_KEY}
+            - name: COOKIE_SECURE
+              value: "true"
+            # Traffic arrives from the node/CNI address behind nginx + Cloudflare, so trust the
+            # forwarded headers from any peer (the NodePort is LAN-only).
+            - name: FORWARDED_ALLOW_IPS
+              value: "*"
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef: {name: camviewer-secrets, key: SESSION_SECRET}
+            - name: APP_USERNAME
+              valueFrom:
+                secretKeyRef: {name: camviewer-secrets, key: APP_USERNAME}
+            - name: APP_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef: {name: camviewer-secrets, key: APP_PASSWORD_HASH}
+            - name: HIK_CONNECT_USER
+              valueFrom:
+                secretKeyRef: {name: camviewer-secrets, key: HIK_CONNECT_USER}
+            - name: HIK_CONNECT_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: camviewer-secrets, key: HIK_CONNECT_PASSWORD}
           volumeMounts:
             - name: data
               mountPath: /data

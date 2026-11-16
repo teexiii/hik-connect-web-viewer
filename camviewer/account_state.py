@@ -1,4 +1,4 @@
-"""Account health state and the persisted session epoch."""
+"""Hik-Connect account health and the persisted session epoch."""
 
 from __future__ import annotations
 
@@ -9,10 +9,9 @@ from pathlib import Path
 
 AUTH_FAILURE_LIMIT = 3
 
-NO_ACCOUNT = "no_account"
+CONNECTING = "connecting"
 OK = "ok"
-NEEDS_LOGIN = "needs_login"
-CAPTCHA = "captcha"
+NEEDS_ATTENTION = "needs_attention"
 
 
 class AccountState:
@@ -21,7 +20,8 @@ class AccountState:
     def __init__(self, data_dir: Path) -> None:
         self._path = data_dir / "state.json"
         self._lock = threading.Lock()
-        self.status = NO_ACCOUNT
+        self.status = CONNECTING
+        self.reason = ""  # why attention is needed: auth | captcha | config
         self.auth_failures = 0
         self._epoch = self._load_epoch()
 
@@ -52,26 +52,26 @@ class AccountState:
     def mark_ok(self) -> None:
         with self._lock:
             self.status = OK
+            self.reason = ""
             self.auth_failures = 0
 
-    def mark_no_account(self) -> None:
+    def mark_connecting(self) -> None:
         with self._lock:
-            self.status = NO_ACCOUNT
+            self.status = CONNECTING
+            self.reason = ""
             self.auth_failures = 0
+
+    def mark_needs_attention(self, reason: str) -> None:
+        with self._lock:
+            self.status = NEEDS_ATTENTION
+            self.reason = reason
 
     def record_auth_failure(self) -> bool:
-        """Count one failure; True when the breaker tripped to needs_login."""
+        """Count one failure; True when the breaker tripped to needs_attention."""
         with self._lock:
             self.auth_failures += 1
             if self.auth_failures >= AUTH_FAILURE_LIMIT:
-                self.status = NEEDS_LOGIN
+                self.status = NEEDS_ATTENTION
+                self.reason = "auth"
                 return True
             return False
-
-    def mark_needs_login(self) -> None:
-        with self._lock:
-            self.status = NEEDS_LOGIN
-
-    def mark_captcha(self) -> None:
-        with self._lock:
-            self.status = CAPTCHA

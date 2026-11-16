@@ -16,7 +16,8 @@ async def test_reconcile_registers_only_missing_streams():
         client = Go2RtcClient(API, "http://127.0.0.1:8081", http)
         assert await client.reconcile(["SER1_1"]) == 1
     params = dict(put.calls.last.request.url.params)
-    assert params == {"name": "SER1_1_h264", "src": "ffmpeg:SER1_1#video=h264"}
+    ts_url = "http://127.0.0.1:8081/internal/ts/SER1_1"
+    assert params == {"name": "SER1_1_h264", "src": f"ffmpeg:{ts_url}#video=h264"}
 
 
 @respx.mock
@@ -40,9 +41,8 @@ async def test_reconcile_survives_go2rtc_being_down():
 
 def test_internal_ts_rejects_unknown_stream_and_unready_account(make_app):
     public, account = make_app()
-    internal = TestClient(create_internal_app(public))
-    with TestClient(public):  # lifespan not needed, state is set at creation
-        assert internal.get("/healthz").status_code == 200
-        assert internal.get("/internal/ts/SER1_1").status_code == 503  # not logged in yet
-        account.login("tee", "secret-pw")
-        assert internal.get("/internal/ts/NOPE_9").status_code == 404
+    internal = TestClient(create_internal_app(public))  # no lifespan: no background login
+    assert internal.get("/healthz").status_code == 200
+    assert internal.get("/internal/ts/SER1_1").status_code == 503  # account not ready yet
+    account.login("hikuser", "hikpw")
+    assert internal.get("/internal/ts/NOPE_9").status_code == 404

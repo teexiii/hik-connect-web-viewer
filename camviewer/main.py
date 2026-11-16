@@ -14,35 +14,14 @@ from fastapi.staticfiles import StaticFiles
 
 from camviewer import auth_routes, camera_routes, go2rtc_proxy_routes
 from camviewer.app_context import AppContext, build_context
-from camviewer.hik_account import AuthError, CaptchaError, HikAccount
+from camviewer.hik_account import HikAccount
+from camviewer.hik_startup_login import restart_login
 from camviewer.internal_routes import create_internal_app
 from camviewer.live_ingest_manager import stream_id_for
+from camviewer.session_auth import SlidingSessionMiddleware
 from camviewer.settings import Settings
 
 log = logging.getLogger("camviewer")
-STARTUP_RETRY_SECONDS = 30
-
-
-async def startup_login(ctx: AppContext) -> None:
-    """Log in with stored credentials; never crash, never hammer a rejecting cloud."""
-    creds = await asyncio.to_thread(ctx.store.load)
-    if creds is None:
-        return
-    while True:
-        try:
-            await asyncio.to_thread(ctx.account.login, *creds)
-            log.info("startup login ok")
-            return
-        except CaptchaError:
-            log.warning("startup login needs CAPTCHA")
-            return
-        except AuthError:
-            ctx.state.mark_needs_login()
-            log.warning("stored credentials rejected; waiting for a new login")
-            return
-        except Exception as exc:  # noqa: BLE001 - network down: retry later
-            log.warning("startup login failed (%s); retrying", type(exc).__name__)
-            await asyncio.sleep(STARTUP_RETRY_SECONDS)
 
 
 async def maintenance_loop(ctx: AppContext) -> None:
@@ -63,20 +42,20 @@ def create_app(settings: Settings, account: HikAccount | None = None) -> FastAPI
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        tasks = [
-            asyncio.create_task(startup_login(ctx)),
-            asyncio.create_task(maintenance_loop(ctx)),
-        ]
+        restart_login(ctx)
+        maintenance = asyncio.create_task(maintenance_loop(ctx))
         try:
             yield
         finally:
-            for task in tasks:
-                task.cancel()
+            maintenance.cancel()
+            if ctx.login_task:
+                ctx.login_task.cancel()
             await asyncio.to_thread(ctx.manager.stop_all)
             await ctx.http.aclose()
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.ctx = ctx
+    app.add_middleware(SlidingSessionMiddleware)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, bool]:
@@ -94,7 +73,13 @@ async def serve(settings: Settings) -> None:
     public_app = create_app(settings)
     internal_app = create_internal_app(public_app)
     public = uvicorn.Server(
-        uvicorn.Config(public_app, host=settings.public_host, port=settings.public_port)
+        uvicorn.Config(
+            public_app,
+            host=settings.public_host,
+            port=settings.public_port,
+            proxy_headers=True,
+            forwarded_allow_ips=settings.forwarded_allow_ips,
+        )
     )
     internal = uvicorn.Server(
         uvicorn.Config(internal_app, host="127.0.0.1", port=settings.internal_port)

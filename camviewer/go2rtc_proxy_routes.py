@@ -16,6 +16,7 @@ import httpx
 import websockets
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import Response, StreamingResponse
+from starlette.websockets import WebSocketDisconnect
 
 from camviewer.app_context import AppContext
 from camviewer.go2rtc_client import stream_names
@@ -128,5 +129,5 @@ async def _pump(ws: WebSocket, upstream: websockets.ClientConnection) -> None:
         for task in tasks:
             task.cancel()
         await upstream.close()
-        with contextlib.suppress(RuntimeError, httpx.HTTPError):
+        with contextlib.suppress(RuntimeError, WebSocketDisconnect, httpx.HTTPError):
             await ws.close()

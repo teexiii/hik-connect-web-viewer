@@ -1,14 +1,7 @@
 // Login page: posts credentials; credentials never touch browser storage.
 const MESSAGES = {
-  401: 'Sai tài khoản hoặc mật khẩu Hik-Connect.',
-  409: 'Máy chủ đã gắn với tài khoản khác. Đăng nhập bằng tài khoản đó hoặc xoá tài khoản cũ.',
-  423: 'Hik-Connect yêu cầu CAPTCHA: mở app Hik-Connect đăng nhập một lần rồi thử lại.',
+  401: 'Sai tên đăng nhập hoặc mật khẩu.',
   429: 'Thử quá nhiều lần. Chờ vài phút rồi thử lại.',
-  502: 'Không kết nối được tới Hik-Connect. Thử lại sau.',
-};
-const REASONS = {
-  needs_login: 'Phiên Hik-Connect hết hạn hoặc mật khẩu đã đổi. Đăng nhập lại.',
-  captcha: MESSAGES[423],
 };
 
 const form = document.querySelector('#login');
@@ -19,11 +12,9 @@ function show(text) {
   error.hidden = !text;
 }
 
-show(REASONS[new URLSearchParams(location.search).get('reason')] ?? '');
-
 fetch('/api/session', { credentials: 'same-origin' })
   .then((response) => response.json())
-  .then((session) => { if (session.authenticated && session.account_status === 'ok') location.href = '/'; })
+  .then((session) => { if (session.authenticated) location.href = '/'; })
   .catch(() => {});
 
 form.addEventListener('submit', async (event) => {

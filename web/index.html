@@ -12,10 +12,14 @@
     <h1>Camera</h1>
     <button id="menu-button" class="icon" aria-label="Tuỳ chọn">⋯</button>
     <div id="menu" class="menu" hidden>
+      <div id="offline-list" class="offline-list" hidden></div>
       <button id="logout">Đăng xuất</button>
-      <button id="forget" class="danger">Xoá tài khoản khỏi máy chủ</button>
     </div>
   </header>
+  <div id="banner" class="banner" role="alert" hidden>
+    <span id="banner-text"></span>
+    <button id="banner-retry">Thử lại</button>
+  </div>
   <main id="grid" class="grid" aria-live="polite">Đang tải…</main>
 
   <section id="viewer" class="viewer" hidden>

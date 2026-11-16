@@ -41,18 +41,18 @@ async def _camera(ctx: AppContext, stream_id: str) -> Any:
         raise HTTPException(404, "unknown camera") from exc
 
 
-def _online(health: dict[str, Any] | None) -> bool | None:
-    if health is None:
-        return None
-    if health["state"] == "offline":
+def _online(known: bool | None, health: dict[str, Any] | None) -> bool | None:
+    """Cloud device status wins; a stream that reports offline also marks it offline."""
+    if health and health["state"] == "offline":
         return False
-    return True if health["state"] == "live" else None
+    return known
 
 
 @router.get("/cameras")
 async def list_cameras(request: Request) -> list[dict[str, Any]]:
     ctx = _ctx(request)
     cameras = await asyncio.to_thread(ctx.account.cameras)
+    online = await asyncio.to_thread(ctx.account.online_map)
     status = ctx.manager.status()
     result = []
     for camera in cameras:
@@ -63,7 +63,7 @@ async def list_cameras(request: Request) -> list[dict[str, Any]]:
                 "name": camera.name,
                 "serial": camera.device_serial,
                 "channel": camera.channel_no,
-                "online": _online(status.get(sid)),
+                "online": _online(online.get(camera.device_serial), status.get(sid)),
                 "streams": {"hevc": sid, "h264": f"{sid}_h264"},
             }
         )
@@ -74,7 +74,7 @@ async def list_cameras(request: Request) -> list[dict[str, Any]]:
 async def status(request: Request) -> dict[str, Any]:
     ctx = _ctx(request)
     return {
-        "account": {"status": ctx.state.status, "username": ctx.account.username},
+        "account": {"status": ctx.state.status, "reason": ctx.state.reason},
         "streams": ctx.manager.status(),
     }
 

@@ -85,7 +85,7 @@ async def test_repeated_auth_errors_trip_to_needs_login(tmp_path):
                 break
             await asyncio.sleep(0.1)
         assert ingest.state == "failed"
-        assert account.state.status == "needs_login"
+        assert account.state.status == "needs_attention"
         opened = account.opened
         await asyncio.sleep(0.3)
         assert account.opened == opened, "no retries once the account needs login"

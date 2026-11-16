@@ -84,14 +84,15 @@ class FakeAccount:
 
 
 class FakeHik:
-    """HikAccount stand-in for API tests: accepts exactly one credential pair."""
+    """HikAccount stand-in for API tests: accepts exactly one Hik-Connect credential pair."""
 
-    def __init__(self, state, accept=("tee", "secret-pw")):
+    def __init__(self, state, accept=("hikuser", "hikpw")):
         self.state = state
         self.accept = accept
         self.username = None
         self.logins = 0
         self.captcha = False
+        self.online = {"SER1": True}
         self.camera = SimpleNamespace(device_serial="SER1", channel_no=1, name="Cam One")
 
     def login(self, username, password):
@@ -99,6 +100,7 @@ class FakeHik:
 
         self.logins += 1
         if self.captcha:
+            self.state.mark_needs_attention("captcha")
             raise CaptchaError("captcha")
         if (username, password) != self.accept:
             raise AuthError("bad")
@@ -108,46 +110,73 @@ class FakeHik:
     def cameras(self, force=False):
         return [self.camera] if self.username else []
 
+    def online_map(self):
+        return dict(self.online)
+
     def snapshot(self, camera):
         return b"\xff\xd8fake-jpeg"
 
-    def forget(self):
-        self.username = None
-        self.state.mark_no_account()
+    def relogin(self):
+        pass
 
 
 ORIGIN = {"origin": "http://testserver"}
+APP_USER, APP_PASSWORD = "tee", "secret-pw"
+
+
+@pytest.fixture(scope="session")
+def app_password_hash():
+    from camviewer.hash_password import hash_password
+
+    return hash_password(APP_PASSWORD)
 
 
 @pytest.fixture
-def make_app(tmp_path):
+def make_app(tmp_path, app_password_hash):
     """Build (app, account) with a throwaway data dir; callers wrap it in TestClient."""
     from camviewer.main import create_app
     from camviewer.settings import Settings
 
-    def factory():
-        settings = Settings(
-            secret_key="test-secret",
-            session_secret="test-session",
-            data_dir=tmp_path,
-            web_dir=tmp_path / "no-web",
-            reconcile_seconds=3600,
-        )
+    def factory(**overrides):
+        values = {
+            "session_secret": "test-session",
+            "app_username": APP_USER,
+            "app_password_hash": app_password_hash,
+            "hik_user": "hikuser",
+            "hik_password": "hikpw",
+            "cookie_secure": False,
+            "data_dir": tmp_path,
+            "web_dir": tmp_path / "no-web",
+            "reconcile_seconds": 3600,
+        } | overrides
+        settings = Settings(**values)
         account = FakeHik(AccountState(tmp_path))
         return create_app(settings, account), account
 
     return factory
 
 
+def wait_until(predicate, timeout=5.0):
+    import time
+
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return False
+
+
 @pytest.fixture
 def logged_in(make_app):
-    """Yield (client, app, account) with a valid session cookie already set."""
+    """Yield (client, app, account) with a valid session cookie; Hik login already done."""
     from fastapi.testclient import TestClient
 
     app, account = make_app()
     with TestClient(app) as client:
+        assert wait_until(lambda: account.state.usable)
         response = client.post(
-            "/api/login", json={"username": "tee", "password": "secret-pw"}, headers=ORIGIN
+            "/api/login", json={"username": APP_USER, "password": APP_PASSWORD}, headers=ORIGIN
         )
         assert response.status_code == 200
         yield client, app, account
