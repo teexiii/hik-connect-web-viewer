@@ -21,10 +21,11 @@ class Go2RtcClient:
         self._http = http
 
     def source_for(self, stream_id: str, name: str) -> str:
-        """Both streams read our MPEG-TS directly; going through go2rtc's own RTSP would route
-        HEVC through its RTP payloader, which panics on this camera's stream."""
-        ts_url = f"{self._ts_base}/internal/ts/{stream_id}"
-        return ts_url if name == stream_id else f"ffmpeg:{ts_url}#video=h264"
+        """Both streams are MPEG-TS served by the app: going through go2rtc's RTSP would route HEVC
+        through its RTP payloader (panics on this camera), and go2rtc's own ffmpeg mis-decodes
+        this camera's HEVC, so the H.264 variant is transcoded by the app too."""
+        kind = "ts" if name == stream_id else "h264"
+        return f"{self._ts_base}/internal/{kind}/{stream_id}"
 
     async def existing(self) -> set[str]:
         response = await self._http.get(f"{self._api}/api/streams")

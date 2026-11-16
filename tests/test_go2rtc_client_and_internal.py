@@ -16,8 +16,7 @@ async def test_reconcile_registers_only_missing_streams():
         client = Go2RtcClient(API, "http://127.0.0.1:8081", http)
         assert await client.reconcile(["SER1_1"]) == 1
     params = dict(put.calls.last.request.url.params)
-    ts_url = "http://127.0.0.1:8081/internal/ts/SER1_1"
-    assert params == {"name": "SER1_1_h264", "src": f"ffmpeg:{ts_url}#video=h264"}
+    assert params == {"name": "SER1_1_h264", "src": "http://127.0.0.1:8081/internal/h264/SER1_1"}
 
 
 @respx.mock
@@ -46,3 +45,4 @@ def test_internal_ts_rejects_unknown_stream_and_unready_account(make_app):
     assert internal.get("/internal/ts/SER1_1").status_code == 503  # account not ready yet
     account.login("hikuser", "hikpw")
     assert internal.get("/internal/ts/NOPE_9").status_code == 404
+    assert internal.get("/internal/h264/NOPE_9").status_code == 404

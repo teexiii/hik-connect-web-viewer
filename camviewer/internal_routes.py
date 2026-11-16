@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from camviewer.h264_transcode import transcode
 from camviewer.live_ingest_manager import TooManyStreams, UnknownStream
 
 
@@ -18,8 +19,7 @@ def create_internal_app(ctx_holder: FastAPI) -> FastAPI:
     async def healthz() -> dict[str, bool]:
         return {"ok": True}
 
-    @app.get("/internal/ts/{stream_id}")
-    async def ts_source(stream_id: str, request: Request) -> StreamingResponse:
+    async def ensure_stream(stream_id: str):  # noqa: ANN202
         ctx = ctx_holder.state.ctx
         if not ctx.state.usable:
             raise HTTPException(503, "account not ready")
@@ -29,6 +29,11 @@ def create_internal_app(ctx_holder: FastAPI) -> FastAPI:
             raise HTTPException(404) from exc
         except TooManyStreams as exc:
             raise HTTPException(429, "too many live streams") from exc
+        return ctx
+
+    @app.get("/internal/ts/{stream_id}")
+    async def ts_source(stream_id: str, request: Request) -> StreamingResponse:
+        ctx = await ensure_stream(stream_id)
 
         async def body() -> AsyncIterator[bytes]:
             source = ctx.manager.subscribe(stream_id)
@@ -39,5 +44,13 @@ def create_internal_app(ctx_holder: FastAPI) -> FastAPI:
                 await source.aclose()
 
         return StreamingResponse(body(), media_type="video/mp2t")
+
+    @app.get("/internal/h264/{stream_id}")
+    async def h264_source(stream_id: str) -> StreamingResponse:
+        """Same camera, transcoded to H.264 by the app's ffmpeg (see h264_transcode)."""
+        ctx = await ensure_stream(stream_id)
+        source = ctx.manager.subscribe(stream_id)
+        body = transcode(source, ctx.manager.ffmpeg_path)
+        return StreamingResponse(body, media_type="video/mp2t")
 
     return app
