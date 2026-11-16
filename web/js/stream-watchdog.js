@@ -116,15 +116,11 @@ export class StreamWatchdog {
         this.codec = 'h264';
         savePref('h264');
       }
-      if (this.fails > MAX_FAILS) {
-        this.emit('failed');
-        clearInterval(this.timer);
-        this.timer = null;
-        return;
-      }
       delay = BACKOFF_MS[Math.min(this.fails - 1, BACKOFF_MS.length - 1)];
     }
-    this.emit('reconnecting', delay);
+    // Past the limit, show "Mất kết nối" + "Thử lại" but never give up: a camera that comes
+    // back after a long outage must resume on its own (slowest backoff keeps retrying).
+    this.emit(this.fails > MAX_FAILS ? 'failed' : 'reconnecting', delay);
     clearTimeout(this.player.reconnectTID);
     this.player.ondisconnect();
     this.retryTimer = setTimeout(() => {

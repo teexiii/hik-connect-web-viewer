@@ -16,7 +16,7 @@ from typing import Any
 
 from pyezvizapi.stream import StreamTransport, detect_transport
 
-from camviewer.hik_account import AuthError, HikAccount, StreamError, classify
+from camviewer.hik_account import HikAccount, StreamError, classify
 
 log = logging.getLogger("camviewer.ingest")
 
@@ -190,8 +190,8 @@ class StreamIngest:
             else:
                 try:
                     self.account.relogin()
-                except AuthError:
-                    log.warning("relogin failed stream=%s", self.stream_id)
+                except Exception as exc:  # noqa: BLE001 - network errors too: never kill the loop
+                    log.warning("relogin failed stream=%s: %s", self.stream_id, type(exc).__name__)
         if not self.account.state.usable:
             self.state = "failed"
             return False

@@ -45,18 +45,23 @@ class _Window:
         self._limit, self._window = limit, window
         self._hits: deque[float] = deque()
 
-    def allow(self) -> bool:
+    def _prune(self) -> None:
         now = time.monotonic()
         while self._hits and now - self._hits[0] > self._window:
             self._hits.popleft()
-        if len(self._hits) >= self._limit:
-            return False
-        self._hits.append(now)
-        return True
+
+    def full(self) -> bool:
+        self._prune()
+        return len(self._hits) >= self._limit
+
+    def hit(self) -> None:
+        self._prune()
+        self._hits.append(time.monotonic())
 
 
 class LoginRateLimiter:
-    """Global sliding window plus a stricter per-IP window."""
+    """Counts FAILED logins only: a global sliding window plus a stricter per-IP window.
+    Successful logins never consume budget, so junk traffic cannot pre-spend the owner's."""
 
     def __init__(
         self,
@@ -68,11 +73,18 @@ class LoginRateLimiter:
         self._ip_limit, self._window = ip_limit, window
         self._ips: dict[str, _Window] = {}
 
-    def allow(self, ip: str) -> bool:
+    def _per_ip(self, ip: str) -> _Window:
         if len(self._ips) > MAX_TRACKED_IPS:
             self._ips.clear()
-        per_ip = self._ips.setdefault(ip, _Window(self._ip_limit, self._window))
-        return per_ip.allow() and self._global.allow()
+        return self._ips.setdefault(ip, _Window(self._ip_limit, self._window))
+
+    def allow(self, ip: str) -> bool:
+        """May this client attempt a login now? Does not consume budget."""
+        return not self._per_ip(ip).full() and not self._global.full()
+
+    def failed(self, ip: str) -> None:
+        self._per_ip(ip).hit()
+        self._global.hit()
 
 
 def client_ip(request: Request) -> str:

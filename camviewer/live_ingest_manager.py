@@ -43,6 +43,7 @@ class LiveIngestManager:
         self.stall_seconds = stall_seconds
         self.rotate_seconds = rotate_seconds
         self.ffmpeg_path = ffmpeg_path
+        self._ensure_lock = asyncio.Lock()
         self._ingests: dict[str, StreamIngest] = {}
         self._idle_handles: dict[str, asyncio.TimerHandle] = {}
 
@@ -54,6 +55,12 @@ class LiveIngestManager:
         raise UnknownStream(stream_id)
 
     async def ensure(self, stream_id: str) -> StreamIngest:
+        # One caller at a time: replacing a dead ingest awaits, and a concurrent caller must not
+        # create a second ingest that would be orphaned (an extra cloud session + ffmpeg).
+        async with self._ensure_lock:
+            return await self._ensure_locked(stream_id)
+
+    async def _ensure_locked(self, stream_id: str) -> StreamIngest:
         ingest = self._ingests.get(stream_id)
         if ingest is not None and ingest.alive:
             return ingest

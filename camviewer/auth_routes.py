@@ -51,10 +51,12 @@ async def session_probe(request: Request) -> dict:
 @router.post("/login", dependencies=[Depends(require_post_origin)])
 async def login(body: LoginBody, request: Request, response: Response) -> dict:
     ctx = _ctx(request)
-    if not ctx.limiter.allow(client_ip(request)):
+    ip = client_ip(request)
+    if not ctx.limiter.allow(ip):
         raise HTTPException(429, "too many login attempts, retry in a few minutes")
     ok = await asyncio.to_thread(_credentials_match, ctx, body.username, body.password)
     if not ok:
+        ctx.limiter.failed(ip)
         raise HTTPException(401, "invalid username or password")
     response.set_cookie(
         COOKIE_NAME,
@@ -68,7 +70,8 @@ async def login(body: LoginBody, request: Request, response: Response) -> dict:
     return {"ok": True}
 
 
-@router.post("/logout", dependencies=[Depends(require_post_origin)])
+# Logout ends every session (epoch bump), so it must itself require a valid session.
+@router.post("/logout", dependencies=[Depends(require_post_origin), Depends(require_session)])
 async def logout(request: Request, response: Response) -> dict:
     ctx = _ctx(request)
     ctx.state.bump_epoch()

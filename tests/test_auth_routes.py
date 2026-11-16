@@ -126,3 +126,20 @@ def test_retry_restarts_the_hik_login(logged_in):
     assert client.post("/api/account/retry", headers=ORIGIN).status_code == 200
     assert wait_until(lambda: account.state.usable)
     assert account.logins == 2
+
+
+def test_successful_logins_do_not_spend_the_rate_limit(make_app):
+    app, _ = make_app()
+    with TestClient(app) as client:
+        ip = {**ORIGIN, "x-real-ip": "4.4.4.4"}
+        codes = [client.post("/api/login", json=GOOD, headers=ip).status_code for _ in range(12)]
+        assert codes == [200] * 12
+
+
+def test_anonymous_logout_cannot_revoke_sessions(logged_in):
+    client, _, _ = logged_in
+    cookie = client.cookies.get(COOKIE_NAME)
+    client.cookies.clear()
+    assert client.post("/api/logout", headers=ORIGIN).status_code == 401
+    client.cookies.set(COOKIE_NAME, cookie)
+    assert client.get("/api/cameras").status_code == 200
