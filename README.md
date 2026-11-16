@@ -72,7 +72,7 @@ CAMVIEWER_SECRETS_FILE=~/secrets/camviewer.env bash deploy/k3s/deploy.sh
 | `SESSION_ROTATE_SECONDS` | `150` | proactively rotate the cloud session |
 | `GO2RTC_URL`, `INTERNAL_TS_BASE` | loopback defaults | internal endpoints |
 
-Login attempts are limited to 10 per 5 minutes overall and 5 per 5 minutes per client IP (`CF-Connecting-IP` when present). That header is only trustworthy when the site is reachable solely through Cloudflare.
+Login attempts are limited to 10 per 5 minutes overall and 5 per 5 minutes per client IP (`X-Real-IP` from the host nginx, which overwrites it with `$remote_addr`).
 
 ## Troubleshooting
 

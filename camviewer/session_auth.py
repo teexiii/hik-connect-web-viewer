@@ -76,9 +76,9 @@ class LoginRateLimiter:
 
 
 def client_ip(request: Request) -> str:
-    """Cloudflare's header when present, else the (proxy-resolved) peer address."""
+    """X-Real-IP set by the host nginx (overwritten there from $remote_addr), else the peer."""
     peer = request.client.host if request.client else "?"
-    return request.headers.get("cf-connecting-ip") or peer
+    return request.headers.get("x-real-ip") or peer
 
 
 def origin_matches_host(origin: str | None, host: str | None) -> bool:

@@ -94,14 +94,14 @@ def test_rate_limit_is_per_ip_then_global(make_app):
     app, _ = make_app()
     with TestClient(app) as client:
         bad = {**GOOD, "password": "x"}
-        ip_a = {**ORIGIN, "cf-connecting-ip": "1.1.1.1"}
+        ip_a = {**ORIGIN, "x-real-ip": "1.1.1.1"}
         codes = [client.post("/api/login", json=bad, headers=ip_a).status_code for _ in range(6)]
         assert codes == [401] * 5 + [429]
         # another address is still allowed until the global budget is spent
-        ip_b = {**ORIGIN, "cf-connecting-ip": "2.2.2.2"}
+        ip_b = {**ORIGIN, "x-real-ip": "2.2.2.2"}
         codes = [client.post("/api/login", json=bad, headers=ip_b).status_code for _ in range(5)]
         assert codes == [401] * 5  # global budget (10) is now spent
-        ip_c = {**ORIGIN, "cf-connecting-ip": "3.3.3.3"}
+        ip_c = {**ORIGIN, "x-real-ip": "3.3.3.3"}
         assert client.post("/api/login", json=bad, headers=ip_c).status_code == 429
 
 
