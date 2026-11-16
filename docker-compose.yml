@@ -1,0 +1,23 @@
+# Local development only. go2rtc shares the app's network namespace, so every internal
+# URL is 127.0.0.1 (same as the k3s Pod) and go2rtc publishes no port of its own.
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - camviewer-data:/data
+    restart: unless-stopped
+
+  go2rtc:
+    image: alexxit/go2rtc:1.9.14
+    network_mode: service:app
+    depends_on:
+      - app
+    volumes:
+      - ./go2rtc.yaml:/config/go2rtc.yaml:ro
+    restart: unless-stopped
+
+volumes:
+  camviewer-data:

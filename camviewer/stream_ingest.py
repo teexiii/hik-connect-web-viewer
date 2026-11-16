@@ -21,6 +21,8 @@ log = logging.getLogger("camviewer.ingest")
 
 GENERIC_BACKOFF = (0.5, 1.0, 2.0, 5.0)
 OFFLINE_BACKOFF = (2.0, 5.0, 10.0, 20.0, 40.0, 60.0)
+TRANSIENT_BACKOFF = (1.0, 2.0, 5.0)
+FIRST_DATA_SECONDS = 6.0
 STABLE_SECONDS = 60.0
 AUTH_STREAK_LIMIT = 3
 QUEUE_SIZE = 128
@@ -60,7 +62,8 @@ class StreamIngest:
         account: HikAccount,
         loop: asyncio.AbstractEventLoop,
         *,
-        stall_seconds: float = 10.0,
+        stall_seconds: float = 2.0,
+        rotate_seconds: float = 225.0,
         ffmpeg_path: str = "ffmpeg",
     ) -> None:
         self.stream_id = stream_id
@@ -68,10 +71,15 @@ class StreamIngest:
         self.account = account
         self.loop = loop
         self.stall_seconds = stall_seconds
+        self.rotate_seconds = rotate_seconds
         self.ffmpeg_path = ffmpeg_path
         self.subscribers: set[asyncio.Queue[bytes | None]] = set()
         self.state = "starting"
         self.reconnects = 0
+        self.rotations = 0
+        self._session_started = 0.0
+        self._got_data = False
+        self._transient_streak = 0
         self.last_bytes_at = 0.0
         self._stop = threading.Event()
         self._forced = threading.Event()
@@ -112,6 +120,7 @@ class StreamIngest:
         return {
             "state": self.state,
             "reconnects": self.reconnects,
+            "rotations": self.rotations,
             "last_bytes_age": None if age is None else round(age, 1),
             "subscribers": len(self.subscribers),
         }
@@ -142,12 +151,21 @@ class StreamIngest:
             forced = self._forced.is_set()
             self._forced.clear()
             kind = "forced" if forced else classify(failure) if failure else "ended"
+            if kind == "transient":
+                self._transient_streak += 1
+                if self._transient_streak > len(TRANSIENT_BACKOFF):
+                    kind = "offline"
             if not self._after_failure(kind, failure):
                 break
             self.reconnects += 1
             if time.monotonic() - started > STABLE_SECONDS:
                 attempt = 0
-            delay = 0.0 if forced else backoff_delay(attempt, offline=kind == "offline")
+            if forced:
+                delay = 0.0
+            elif kind == "transient":
+                delay = TRANSIENT_BACKOFF[self._transient_streak - 1]
+            else:
+                delay = backoff_delay(attempt, offline=kind == "offline")
             attempt = 0 if forced else attempt + 1
             log.info("stream=%s reconnect kind=%s delay=%.1fs", self.stream_id, kind, delay)
             self._stop.wait(delay)
@@ -182,6 +200,8 @@ class StreamIngest:
     def _run_session(self) -> None:
         session = self.account.open_stream(self.camera)
         self._session = session
+        self._session_started = self.last_bytes_at = time.monotonic()
+        self._got_data = False
         try:
             info = session.start()
             result = getattr(info, "result", 0)
@@ -197,6 +217,8 @@ class StreamIngest:
                 self._write(chunk, fmt)
                 self.last_bytes_at = time.monotonic()
                 self._auth_streak = 0
+                self._transient_streak = 0
+                self._got_data = True
                 self.state = "live"
         finally:
             self._session = None
@@ -206,10 +228,27 @@ class StreamIngest:
                 log.debug("session close failed stream=%s", self.stream_id)
 
     def _watchdog(self) -> None:
-        while not self._stop.wait(1.0):
-            if self.state == "live" and time.monotonic() - self.last_bytes_at > self.stall_seconds:
+        """Close the session on a stall (unblocks the reader) or when it is due for rotation.
+
+        The cloud silently stops sending data ~240s into a session and the library only
+        notices after its own 15s timeout, so we rotate early and detect stalls fast.
+        """
+        tick = max(0.1, min(1.0, self.stall_seconds / 4))
+        while not self._stop.wait(tick):
+            if self._session is None:
+                continue
+            now = time.monotonic()
+            limit = self.stall_seconds
+            if not self._got_data:
+                limit = max(limit, FIRST_DATA_SECONDS)
+            if now - self.last_bytes_at > limit:
                 log.warning("stream=%s stalled, forcing reconnect", self.stream_id)
-                self.last_bytes_at = time.monotonic()
+                self.last_bytes_at = now
+                self.force_reconnect()
+            elif self._got_data and now - self._session_started > self.rotate_seconds:
+                log.info("stream=%s rotating session", self.stream_id)
+                self.rotations += 1
+                self._session_started = now
                 self.force_reconnect()
 
     # ---- ffmpeg ----------------------------------------------------------

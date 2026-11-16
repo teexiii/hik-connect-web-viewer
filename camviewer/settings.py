@@ -21,7 +21,8 @@ class Settings:
     data_dir: Path = Path("data")
     max_streams: int = 3
     idle_stop_seconds: float = 30.0
-    stall_seconds: float = 10.0
+    stall_seconds: float = 2.0
+    session_rotate_seconds: float = 225.0
     public_host: str = "0.0.0.0"
     public_port: int = 8080
     internal_port: int = 8081
@@ -44,6 +45,8 @@ class Settings:
             go2rtc_url=os.environ.get("GO2RTC_URL", "http://127.0.0.1:1984"),
             go2rtc_rtsp_url=os.environ.get("GO2RTC_RTSP_URL", "rtsp://127.0.0.1:8554"),
             internal_ts_base=os.environ.get("INTERNAL_TS_BASE", "http://127.0.0.1:8081"),
+            stall_seconds=float(os.environ.get("STALL_SECONDS", "2")),
+            session_rotate_seconds=float(os.environ.get("SESSION_ROTATE_SECONDS", "225")),
             web_dir=Path(os.environ.get("WEB_DIR", "web")),
         )
 

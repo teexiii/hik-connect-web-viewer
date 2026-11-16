@@ -33,13 +33,15 @@ class LiveIngestManager:
         *,
         max_streams: int = 3,
         idle_stop_seconds: float = 30.0,
-        stall_seconds: float = 10.0,
+        stall_seconds: float = 2.0,
+        rotate_seconds: float = 225.0,
         ffmpeg_path: str = "ffmpeg",
     ) -> None:
         self.account = account
         self.max_streams = max_streams
         self.idle_stop_seconds = idle_stop_seconds
         self.stall_seconds = stall_seconds
+        self.rotate_seconds = rotate_seconds
         self.ffmpeg_path = ffmpeg_path
         self._ingests: dict[str, StreamIngest] = {}
         self._idle_handles: dict[str, asyncio.TimerHandle] = {}
@@ -70,6 +72,7 @@ class LiveIngestManager:
             self.account,
             asyncio.get_running_loop(),
             stall_seconds=self.stall_seconds,
+            rotate_seconds=self.rotate_seconds,
             ffmpeg_path=self.ffmpeg_path,
         )
         self._ingests[stream_id] = ingest

@@ -1,0 +1,15 @@
+.git
+.venv
+.env
+*.env
+data
+spike-out
+plans
+scripts
+tests
+deploy
+__pycache__
+.pytest_cache
+.ruff_cache
+*.ts
+*.mp4

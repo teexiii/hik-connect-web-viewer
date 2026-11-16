@@ -15,6 +15,7 @@ from hikcloudstream import (
     HikConnectClient,
     StreamType,
 )
+from hikcloudstream.exceptions import StreamNegotiationError
 from hikcloudstream.stream import open_live_stream
 from pyezvizapi.exceptions import DeviceException
 
@@ -24,6 +25,7 @@ log = logging.getLogger("camviewer.account")
 
 CAMERA_TTL_SECONDS = 300
 RELOGIN_MIN_INTERVAL = 30.0
+OPEN_TIMEOUT_SECONDS = 5.0
 
 
 class AuthError(Exception):
@@ -39,11 +41,13 @@ class StreamError(Exception):
 
 
 def classify(exc: BaseException) -> str:
-    """Map a stream-loop exception to auth | captcha | offline | other."""
+    """Map a stream-loop exception to auth | captcha | transient | offline | other."""
     if isinstance(exc, CaptchaError | CaptchaRequiredError):
         return "captcha"
     if isinstance(exc, AuthError | AuthenticationError):
         return "auth"
+    if isinstance(exc, StreamNegotiationError) and "VTM resource" in str(exc):
+        return "transient"  # right after a session ends the cloud briefly forgets the resource
     if isinstance(exc, DeviceException | StreamError):
         return "offline"
     return "other"
@@ -151,4 +155,6 @@ class HikAccount:
             client = self._client
         if client is None:
             raise AuthError("not logged in")
-        return self._opener(client, camera, stream_type=StreamType.MAIN)
+        return self._opener(
+            client, camera, stream_type=StreamType.MAIN, timeout=OPEN_TIMEOUT_SECONDS
+        )

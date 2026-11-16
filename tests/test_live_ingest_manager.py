@@ -183,3 +183,57 @@ async def test_unknown_stream_and_stream_cap(tmp_path, ps_chunks):
         await manager.find_camera("missing_1")
     with pytest.raises(TooManyStreams):
         await manager.ensure(SID)
+
+
+async def test_rotation_reopens_before_the_cloud_cutoff(tmp_path, ps_chunks):
+    account = FakeAccount(tmp_path, [lambda: FakeSession(ps_chunks, block_after=True)])
+    manager = LiveIngestManager(account, rotate_seconds=0.6, stall_seconds=5)
+    await collect(manager, min_bytes=1000)
+    ingest = manager.status()
+    proc = manager._ingests[SID]._ff
+    try:
+        for _ in range(100):
+            if account.opened >= 3:
+                break
+            await asyncio.sleep(0.1)
+        assert account.opened >= 3
+        health = manager.status()[SID]
+        assert health["rotations"] >= 2 and ingest[SID]["rotations"] == 0
+        assert manager._ingests[SID]._ff is proc, "rotation keeps the same ffmpeg"
+    finally:
+        manager.stop_all()
+
+
+async def test_two_second_stall_reconnects_quickly(tmp_path, ps_chunks):
+    plan = [
+        lambda: FakeSession(ps_chunks[:5], block_after=True),
+        lambda: FakeSession(ps_chunks, block_after=True),
+    ]
+    account = FakeAccount(tmp_path, plan)
+    manager = LiveIngestManager(account, stall_seconds=2.0, rotate_seconds=999)
+    await manager.ensure(SID)
+    started = asyncio.get_running_loop().time()
+    try:
+        while account.opened < 2:
+            await asyncio.sleep(0.05)
+        assert asyncio.get_running_loop().time() - started < 4.5
+    finally:
+        manager.stop_all()
+
+
+async def test_missing_vtm_resource_is_transient_not_offline(tmp_path, ps_chunks):
+    from hikcloudstream.exceptions import StreamNegotiationError
+
+    def flaky():
+        raise StreamNegotiationError("could not find VTM resource for SER1 channel 1")
+
+    account = FakeAccount(tmp_path, [flaky, lambda: FakeSession(ps_chunks)])
+    manager = LiveIngestManager(account)
+    ingest = await manager.ensure(SID)
+    try:
+        await asyncio.sleep(0.3)
+        assert ingest.state != "offline"
+        await collect(manager, min_bytes=1000)
+        assert account.opened >= 2
+    finally:
+        manager.stop_all()

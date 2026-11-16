@@ -44,6 +44,7 @@ def build_context(settings: Settings, account: HikAccount | None = None) -> AppC
             max_streams=settings.max_streams,
             idle_stop_seconds=settings.idle_stop_seconds,
             stall_seconds=settings.stall_seconds,
+            rotate_seconds=settings.session_rotate_seconds,
         ),
         signer=SessionSigner(settings.session_secret),
         limiter=LoginRateLimiter(),
