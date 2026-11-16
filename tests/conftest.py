@@ -43,7 +43,7 @@ class FakeSession:
             raise self.raise_on_start
         return SimpleNamespace(result=self.result)
 
-    def iter_annex_b_chunks(self):
+    def iter_rtp_packets(self):
         for chunk in self.chunks:
             if self.closed.is_set():
                 return

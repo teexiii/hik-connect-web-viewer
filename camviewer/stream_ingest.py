@@ -231,7 +231,11 @@ class StreamIngest:
     @staticmethod
     def _pump(session: Any, chunks: queue.Queue[Any], abandoned: threading.Event) -> None:
         try:
-            for chunk in session.iter_annex_b_chunks():
+            # Raw VTM payloads, NOT iter_annex_b_chunks(): the library re-detects the transport on
+            # every packet, and an MPEG-PS continuation packet whose first byte happens to look like
+            # RTP (0x80-0xBF, about 1 in 4) gets mangled by its RTP depayloader, smearing the video.
+            # The transport is detected once, from the first packet, in _consume.
+            for chunk in session.iter_rtp_packets():
                 if abandoned.is_set():
                     return
                 chunks.put(chunk)
