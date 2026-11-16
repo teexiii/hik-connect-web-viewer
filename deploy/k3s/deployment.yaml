@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: camviewer
+  namespace: camviewer
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: camviewer
+  template:
+    metadata:
+      labels:
+        app: camviewer
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: app
+          image: __APP_IMAGE__
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATA_DIR
+              value: /data
+            - name: CAMVIEWER_SECRET_KEY
+              valueFrom:
+                secretKeyRef: {name: camviewer-secrets, key: CAMVIEWER_SECRET_KEY}
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef: {name: camviewer-secrets, key: SESSION_SECRET}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet: {path: /healthz, port: 8080}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: 8080}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 512Mi}
+        - name: go2rtc
+          image: __GO2RTC_IMAGE__
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: go2rtc-config
+              mountPath: /config/go2rtc.yaml
+              subPath: go2rtc.yaml
+              readOnly: true
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 384Mi}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: camviewer-data
+        - name: go2rtc-config
+          configMap:
+            name: go2rtc-config

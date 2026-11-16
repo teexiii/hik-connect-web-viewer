@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: go2rtc-config
+  namespace: camviewer
+data:
+  # Keep in sync with /go2rtc.yaml in the repo. The API can create exec: sources, so it
+  # listens on loopback only and is reachable solely through the app's allowlisted proxy.
+  go2rtc.yaml: |
+    api:
+      listen: "127.0.0.1:1984"
+    rtsp:
+      listen: "127.0.0.1:8554"
+    webrtc:
+      listen: ""
+    srtp:
+      listen: ""
+    log:
+      level: info
