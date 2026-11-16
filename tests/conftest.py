@@ -81,3 +81,73 @@ class FakeAccount:
         self.relogins += 1
         if self.relogin_error:
             raise self.relogin_error
+
+
+class FakeHik:
+    """HikAccount stand-in for API tests: accepts exactly one credential pair."""
+
+    def __init__(self, state, accept=("tee", "secret-pw")):
+        self.state = state
+        self.accept = accept
+        self.username = None
+        self.logins = 0
+        self.captcha = False
+        self.camera = SimpleNamespace(device_serial="SER1", channel_no=1, name="Cam One")
+
+    def login(self, username, password):
+        from camviewer.hik_account import AuthError, CaptchaError
+
+        self.logins += 1
+        if self.captcha:
+            raise CaptchaError("captcha")
+        if (username, password) != self.accept:
+            raise AuthError("bad")
+        self.username = username
+        self.state.mark_ok()
+
+    def cameras(self, force=False):
+        return [self.camera] if self.username else []
+
+    def snapshot(self, camera):
+        return b"\xff\xd8fake-jpeg"
+
+    def forget(self):
+        self.username = None
+        self.state.mark_no_account()
+
+
+ORIGIN = {"origin": "http://testserver"}
+
+
+@pytest.fixture
+def make_app(tmp_path):
+    """Build (app, account) with a throwaway data dir; callers wrap it in TestClient."""
+    from camviewer.main import create_app
+    from camviewer.settings import Settings
+
+    def factory():
+        settings = Settings(
+            secret_key="test-secret",
+            session_secret="test-session",
+            data_dir=tmp_path,
+            web_dir=tmp_path / "no-web",
+            reconcile_seconds=3600,
+        )
+        account = FakeHik(AccountState(tmp_path))
+        return create_app(settings, account), account
+
+    return factory
+
+
+@pytest.fixture
+def logged_in(make_app):
+    """Yield (client, app, account) with a valid session cookie already set."""
+    from fastapi.testclient import TestClient
+
+    app, account = make_app()
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/login", json={"username": "tee", "password": "secret-pw"}, headers=ORIGIN
+        )
+        assert response.status_code == 200
+        yield client, app, account

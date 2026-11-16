@@ -88,6 +88,10 @@ class StreamIngest:
             thread.start()
             self._threads.append(thread)
 
+    @property
+    def alive(self) -> bool:
+        return bool(self._threads) and self._threads[0].is_alive()
+
     def stop(self) -> None:
         self._stop.set()
         self._close_session()
@@ -147,6 +151,11 @@ class StreamIngest:
             attempt = 0 if forced else attempt + 1
             log.info("stream=%s reconnect kind=%s delay=%.1fs", self.stream_id, kind, delay)
             self._stop.wait(delay)
+        if not self._stop.is_set():
+            try:
+                self.loop.call_soon_threadsafe(self._end_subscribers)
+            except RuntimeError:  # event loop closed during shutdown
+                pass
 
     def _after_failure(self, kind: str, failure: BaseException | None) -> bool:
         """Update state for the failure kind; False means stop the ingest."""
@@ -261,6 +270,11 @@ class StreamIngest:
         proc.stderr.close()
 
     # ---- fan-out (event loop thread) ---------------------------------------
+    def _end_subscribers(self) -> None:
+        """Tell consumers the ingest is over so their HTTP source closes."""
+        for queue in list(self.subscribers):
+            self._offer(queue, None)
+
     def _broadcast(self, data: bytes) -> None:
         for queue in self.subscribers:
             self._offer(queue, data)

@@ -51,14 +51,17 @@ class LiveIngestManager:
                 return camera
         raise UnknownStream(stream_id)
 
-    async def _ensure(self, stream_id: str) -> StreamIngest:
+    async def ensure(self, stream_id: str) -> StreamIngest:
         ingest = self._ingests.get(stream_id)
-        if ingest is not None:
+        if ingest is not None and ingest.alive:
             return ingest
         camera = await self.find_camera(stream_id)
         ingest = self._ingests.get(stream_id)  # another subscriber may have won the race
-        if ingest is not None:
+        if ingest is not None and ingest.alive:
             return ingest
+        if ingest is not None:  # a failed ingest (account needed login) is replaced
+            del self._ingests[stream_id]
+            await asyncio.to_thread(ingest.stop)
         if len(self._ingests) >= self.max_streams:
             raise TooManyStreams(stream_id)
         ingest = StreamIngest(
@@ -75,7 +78,7 @@ class LiveIngestManager:
 
     async def subscribe(self, stream_id: str) -> AsyncIterator[bytes]:
         """Yield MPEG-TS bytes for a camera; starts the ingest if needed."""
-        ingest = await self._ensure(stream_id)
+        ingest = await self.ensure(stream_id)
         self._cancel_idle(stream_id)
         queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=QUEUE_SIZE)
         ingest.subscribers.add(queue)

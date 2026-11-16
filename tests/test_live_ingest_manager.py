@@ -78,7 +78,7 @@ async def test_repeated_auth_errors_trip_to_needs_login(tmp_path):
         tmp_path, [lambda: FakeSession([], raise_on_start=AuthenticationError("bad"))]
     )
     manager = LiveIngestManager(account)
-    ingest = await manager._ensure(SID)
+    ingest = await manager.ensure(SID)
     try:
         for _ in range(100):
             if ingest.state == "failed":
@@ -98,7 +98,7 @@ async def test_captcha_stops_immediately(tmp_path):
         tmp_path, [lambda: FakeSession([], raise_on_start=CaptchaRequiredError("captcha"))]
     )
     manager = LiveIngestManager(account)
-    ingest = await manager._ensure(SID)
+    ingest = await manager.ensure(SID)
     try:
         for _ in range(50):
             if ingest.state == "failed":
@@ -113,7 +113,7 @@ async def test_captcha_stops_immediately(tmp_path):
 async def test_offline_result_marks_offline_and_retries(tmp_path):
     account = FakeAccount(tmp_path, [lambda: FakeSession([], result=5404)])
     manager = LiveIngestManager(account)
-    ingest = await manager._ensure(SID)
+    ingest = await manager.ensure(SID)
     try:
         for _ in range(50):
             if account.opened >= 3:
@@ -145,7 +145,7 @@ async def test_stall_forces_reconnect(tmp_path, ps_chunks):
     ]
     account = FakeAccount(tmp_path, plan)
     manager = LiveIngestManager(account, stall_seconds=0.5)
-    ingest = await manager._ensure(SID)
+    ingest = await manager.ensure(SID)
     try:
         for _ in range(100):
             if account.opened >= 2:
@@ -182,4 +182,4 @@ async def test_unknown_stream_and_stream_cap(tmp_path, ps_chunks):
     with pytest.raises(UnknownStream):
         await manager.find_camera("missing_1")
     with pytest.raises(TooManyStreams):
-        await manager._ensure(SID)
+        await manager.ensure(SID)

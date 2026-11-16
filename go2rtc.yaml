@@ -1,0 +1,12 @@
+# go2rtc runs in the same network namespace as the app and is reachable only on loopback.
+# Its API can create exec: sources, so it must never be published or bound to 0.0.0.0.
+api:
+  listen: "127.0.0.1:1984"
+rtsp:
+  listen: "127.0.0.1:8554"
+webrtc:
+  listen: ""
+srtp:
+  listen: ""
+log:
+  level: info
