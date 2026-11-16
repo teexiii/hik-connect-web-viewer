@@ -66,7 +66,7 @@ def main():
         context = browser.new_context(**p.devices["Pixel 7"], accept_downloads=True)
         context.add_cookies([{"name": k, "value": v, "domain": host, "path": "/"} for k, v in cookies.items()])
         page = context.new_page()
-        page.on("console", lambda m: print("console:", m.text[:160]) if m.type in ("error", "warning") else None)
+        page.on("console", lambda m: print(time.strftime("%H:%M:%S"), "console:", m.text[:160]) if m.type in ("error", "warning") or "[watchdog]" in m.text else None)
         page.goto(args.base + ("/" if args.stream == "auto" else f"/?stream={args.stream}"))
         page.evaluate(SAMPLER, args.camera_id)
 

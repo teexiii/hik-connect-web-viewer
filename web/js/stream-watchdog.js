@@ -47,6 +47,13 @@ export class StreamWatchdog {
     this.onOnline = () => this.reconnect(0);
   }
 
+  /** Report a state to the UI; transitions are also logged for field debugging. */
+  emit(state, detail) {
+    if (state !== this.lastState) console.info('[watchdog]', state, detail ?? '');
+    this.lastState = state;
+    this.onStatus(state, detail);
+  }
+
   start() {
     this.player.mode = 'mse,hls';
     this.connect();
@@ -75,7 +82,7 @@ export class StreamWatchdog {
     this.playingSince = 0;
     this.everPlayed = false;
     this.player.src = `/go2rtc/api/ws?src=${encodeURIComponent(this.streams[this.codec])}`;
-    this.onStatus('connecting');
+    this.emit('connecting');
   }
 
   tick() {
@@ -90,7 +97,7 @@ export class StreamWatchdog {
       this.everPlayed = true;
       this.hasPlayedEver = true;
       if (now - this.playingSince > STABLE_MS) this.fails = 0;
-      this.onStatus('live');
+      this.emit('live');
       return;
     }
     let limit = this.everPlayed ? STALL_MS : FIRST_FRAME_MS;
@@ -110,14 +117,14 @@ export class StreamWatchdog {
         savePref('h264');
       }
       if (this.fails > MAX_FAILS) {
-        this.onStatus('failed');
+        this.emit('failed');
         clearInterval(this.timer);
         this.timer = null;
         return;
       }
       delay = BACKOFF_MS[Math.min(this.fails - 1, BACKOFF_MS.length - 1)];
     }
-    this.onStatus('reconnecting', delay);
+    this.emit('reconnecting', delay);
     clearTimeout(this.player.reconnectTID);
     this.player.ondisconnect();
     this.retryTimer = setTimeout(() => {

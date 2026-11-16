@@ -34,7 +34,7 @@ class LiveIngestManager:
         max_streams: int = 3,
         idle_stop_seconds: float = 30.0,
         stall_seconds: float = 2.0,
-        rotate_seconds: float = 225.0,
+        rotate_seconds: float = 150.0,
         ffmpeg_path: str = "ffmpeg",
     ) -> None:
         self.account = account

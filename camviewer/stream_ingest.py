@@ -64,7 +64,7 @@ class StreamIngest:
         loop: asyncio.AbstractEventLoop,
         *,
         stall_seconds: float = 2.0,
-        rotate_seconds: float = 225.0,
+        rotate_seconds: float = 150.0,
         ffmpeg_path: str = "ffmpeg",
     ) -> None:
         self.stream_id = stream_id

@@ -32,7 +32,7 @@ class Settings:
     max_streams: int = 3
     idle_stop_seconds: float = 30.0
     stall_seconds: float = 2.0
-    session_rotate_seconds: float = 225.0
+    session_rotate_seconds: float = 150.0
     public_host: str = "0.0.0.0"
     public_port: int = 8080
     internal_port: int = 8081
@@ -56,7 +56,7 @@ class Settings:
             max_streams=_env_int("MAX_STREAMS", 3),
             idle_stop_seconds=float(env("IDLE_STOP_SECONDS", "30")),
             stall_seconds=float(env("STALL_SECONDS", "2")),
-            session_rotate_seconds=float(env("SESSION_ROTATE_SECONDS", "225")),
+            session_rotate_seconds=float(env("SESSION_ROTATE_SECONDS", "150")),
             public_port=_env_int("PUBLIC_PORT", 8080),
             internal_port=_env_int("INTERNAL_PORT", 8081),
             go2rtc_url=env("GO2RTC_URL", "http://127.0.0.1:1984"),

@@ -20,7 +20,7 @@ phone --> app :8080 (login, API, static UI, allowlisted proxy) --> go2rtc (loopb
 ```
 
 - One Hik-Connect login is shared by all cameras; an ingest starts when the first viewer connects and stops 30 s after the last one leaves (`MAX_STREAMS`, default 3).
-- Reconnect layers: the ingest rotates the cloud session every 225 s (the cloud stops sending data around 240 s) and reopens within 2 s of a stall while keeping the same ffmpeg; go2rtc re-pulls the source; the browser watchdog restarts the player when the picture freezes.
+- Reconnect layers: the ingest rotates the cloud session every 150 s (the cloud stops sending data at about 240 s, and a session that old makes the camera refuse new sessions for 90-160 s; sessions up to 200 s reopen instantly) and reopens within 2 s of a stall while keeping the same ffmpeg; go2rtc re-pulls the source; the browser watchdog restarts the player when the picture freezes.
 - The browser plays HEVC directly when it can (`{id}` stream) and falls back to a go2rtc H.264 transcode (`{id}_h264`). Add `?stream=hevc` or `?stream=h264` to the page URL to force one.
 - go2rtc listens on `127.0.0.1` only (its API can create `exec:` sources). The app proxies just the allowlisted routes and stream names after checking the session cookie and `Origin`.
 - Hik-Connect failures: three auth failures in a row or a CAPTCHA stop all retries and show a banner with a "Thử lại" button (it re-runs the login). A temporarily unreachable cloud is retried with back-off.
@@ -69,7 +69,7 @@ CAMVIEWER_SECRETS_FILE=~/secrets/camviewer.env bash deploy/k3s/deploy.sh
 | `MAX_STREAMS` | `3` | concurrent camera ingests |
 | `IDLE_STOP_SECONDS` | `30` | stop an ingest after the last viewer leaves |
 | `STALL_SECONDS` | `2` | no data for this long reopens the cloud session |
-| `SESSION_ROTATE_SECONDS` | `225` | proactively rotate the cloud session |
+| `SESSION_ROTATE_SECONDS` | `150` | proactively rotate the cloud session |
 | `GO2RTC_URL`, `INTERNAL_TS_BASE` | loopback defaults | internal endpoints |
 
 Login attempts are limited to 10 per 5 minutes overall and 5 per 5 minutes per client IP (`CF-Connecting-IP` when present). That header is only trustworthy when the site is reachable solely through Cloudflare.
