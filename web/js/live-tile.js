@@ -1,6 +1,6 @@
 // One live view: <video-stream> + watchdog, shared by the grid cards and the fullscreen viewer.
 import '../vendor/video-stream.js';
-import { StreamWatchdog, pickStream } from './stream-watchdog.js';
+import { StreamWatchdog, pickCodec } from './stream-watchdog.js';
 
 export const STATUS_LABEL = {
   connecting: 'Đang kết nối',
@@ -23,14 +23,15 @@ export class LiveTile {
   start() {
     if (this.player) return;
     const force = new URLSearchParams(location.search).get('stream');
-    const name = pickStream(this.camera.streams, force);
+    const codec = pickCodec(force);
     this.player = document.createElement('video-stream');
     this.player.setAttribute('muted', '');
     this.host.append(this.player);
     this.player.video.muted = true;
     this.player.video.playsInline = true;
     this.player.video.setAttribute('playsinline', '');
-    this.watchdog = new StreamWatchdog(this.player, name, (state, detail) => this.onStatus(state, detail));
+    this.watchdog = new StreamWatchdog(
+      this.player, this.camera.streams, codec, !force, (state, detail) => this.onStatus(state, detail));
     this.watchdog.start();
   }
 

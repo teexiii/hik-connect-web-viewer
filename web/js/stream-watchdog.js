@@ -6,19 +6,34 @@ const FIRST_FRAME_MS = 20000; // cloud open + transcode can take a while
 const STABLE_MS = 30000; // playing this long resets the failure counter
 const MAX_FAILS = 10;
 
-/** Pick the stream that this browser can decode (HEVC passthrough, else go2rtc H.264). */
-export function pickStream(streams, force) {
-  if (force === 'hevc' || force === 'h264') return streams[force];
+const CODEC_PREF_KEY = 'camviewer-codec';
+const HEVC_FAILS_BEFORE_FALLBACK = 1;
+const HEVC_FIRST_FRAME_MS = 10000; // a decodable HEVC stream shows its first frame quickly
+
+function readPref() {
+  try { return localStorage.getItem(CODEC_PREF_KEY); } catch { return null; }
+}
+
+function savePref(codec) {
+  try { localStorage.setItem(CODEC_PREF_KEY, codec); } catch { /* private mode */ }
+}
+
+/** HEVC passthrough when the browser claims support, else go2rtc's H.264 transcode. */
+export function pickCodec(force) {
+  if (force === 'hevc' || force === 'h264') return force;
+  if (readPref() === 'h264') return 'h264';
   const MS = window.ManagedMediaSource ?? window.MediaSource;
-  const hevc = MS?.isTypeSupported?.('video/mp4; codecs="hvc1.1.6.L93.B0"');
-  return hevc ? streams.hevc : streams.h264;
+  return MS?.isTypeSupported?.('video/mp4; codecs="hvc1.1.6.L93.B0"') ? 'hevc' : 'h264';
 }
 
 export class StreamWatchdog {
   /** @param player <video-stream>; @param onStatus (state, detail) => void */
-  constructor(player, streamName, onStatus) {
+  constructor(player, streams, codec, canFallback, onStatus) {
     this.player = player;
-    this.url = `/go2rtc/api/ws?src=${encodeURIComponent(streamName)}`;
+    this.streams = streams;
+    this.codec = codec;
+    this.canFallback = canFallback; // not when the URL forces a codec
+    this.hasPlayedEver = false;
     this.onStatus = onStatus;
     this.fails = 0;
     this.lastTime = -1;
@@ -59,7 +74,7 @@ export class StreamWatchdog {
     this.lastAdvance = Date.now();
     this.playingSince = 0;
     this.everPlayed = false;
-    this.player.src = this.url;
+    this.player.src = `/go2rtc/api/ws?src=${encodeURIComponent(this.streams[this.codec])}`;
     this.onStatus('connecting');
   }
 
@@ -68,16 +83,18 @@ export class StreamWatchdog {
     if (this.stopped || !video || document.hidden) return;
     const now = Date.now();
     if (video.error || video.ended) return this.reconnect();
-    if (video.currentTime > this.lastTime + 0.05) {
+    if (video.currentTime > 0 && video.currentTime > this.lastTime + 0.05) {
       this.lastTime = video.currentTime;
       this.lastAdvance = now;
       this.playingSince ||= now;
       this.everPlayed = true;
+      this.hasPlayedEver = true;
       if (now - this.playingSince > STABLE_MS) this.fails = 0;
       this.onStatus('live');
       return;
     }
-    const limit = this.everPlayed ? STALL_MS : FIRST_FRAME_MS;
+    let limit = this.everPlayed ? STALL_MS : FIRST_FRAME_MS;
+    if (!this.hasPlayedEver && this.codec === 'hevc') limit = HEVC_FIRST_FRAME_MS;
     if (now - this.lastAdvance > limit) this.reconnect();
   }
 
@@ -86,6 +103,12 @@ export class StreamWatchdog {
     if (this.stopped || this.retryTimer) return;
     if (delay === undefined) {
       this.fails += 1;
+      // Browsers can claim HEVC support yet fail to decode it: fall back to H.264 for good.
+      if (this.canFallback && this.codec === 'hevc' && !this.hasPlayedEver
+          && this.fails >= HEVC_FAILS_BEFORE_FALLBACK) {
+        this.codec = 'h264';
+        savePref('h264');
+      }
       if (this.fails > MAX_FAILS) {
         this.onStatus('failed');
         clearInterval(this.timer);

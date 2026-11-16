@@ -64,11 +64,17 @@ spec:
         - name: go2rtc
           image: __GO2RTC_IMAGE__
           imagePullPolicy: Never
+          # go2rtc rewrites its config when streams are registered over the API, so it runs
+          # from a writable copy of the ConfigMap template.
+          command: ["/bin/sh", "-c"]
+          args:
+            - cp /config-src/go2rtc.yaml /config/go2rtc.yaml && exec /sbin/tini -- go2rtc -config /config/go2rtc.yaml
           volumeMounts:
             - name: go2rtc-config
-              mountPath: /config/go2rtc.yaml
-              subPath: go2rtc.yaml
+              mountPath: /config-src
               readOnly: true
+            - name: go2rtc-work
+              mountPath: /config
           resources:
             requests: {cpu: 50m, memory: 64Mi}
             limits: {memory: 384Mi}
@@ -79,3 +85,5 @@ spec:
         - name: go2rtc-config
           configMap:
             name: go2rtc-config
+        - name: go2rtc-work
+          emptyDir: {}

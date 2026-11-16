@@ -96,6 +96,7 @@ async def serve(settings: Settings) -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # request URLs can carry tokens
     settings = Settings.from_env()
     settings.validate()
     asyncio.run(serve(settings))

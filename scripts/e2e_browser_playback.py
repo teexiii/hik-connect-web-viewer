@@ -67,7 +67,7 @@ def main():
         context.add_cookies([{"name": k, "value": v, "domain": host, "path": "/"} for k, v in cookies.items()])
         page = context.new_page()
         page.on("console", lambda m: print("console:", m.text[:160]) if m.type in ("error", "warning") else None)
-        page.goto(f"{args.base}/?stream={args.stream}")
+        page.goto(args.base + ("/" if args.stream == "auto" else f"/?stream={args.stream}"))
         page.evaluate(SAMPLER, args.camera_id)
 
         t0 = time.time()
@@ -105,8 +105,9 @@ def main():
 
         # snapshot + 10 s clip through the authenticated API from inside the page
         snap = page.evaluate(
-            "(id) => fetch(`/api/cameras/${id}/snapshot`).then(async r => [r.status, "
-            "btoa(String.fromCharCode(...new Uint8Array(await r.arrayBuffer())))])",
+            "(id) => fetch(`/api/cameras/${id}/snapshot`).then(async r => { "
+            "const bytes = new Uint8Array(await r.arrayBuffer()); let bin = ''; "
+            "for (const b of bytes) bin += String.fromCharCode(b); return [r.status, btoa(bin)]; })",
             args.camera_id)
         result["snapshot_status"] = snap[0]
         (out / "snapshot.jpg").write_bytes(__import__("base64").b64decode(snap[1]))

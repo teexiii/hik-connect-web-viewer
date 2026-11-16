@@ -15,8 +15,14 @@ services:
     network_mode: service:app
     depends_on:
       - app
+    # go2rtc rewrites its config file when streams are registered over the API, so it gets a
+    # writable copy of the read-only template.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - cp /config-src/go2rtc.yaml /config/go2rtc.yaml && exec /sbin/tini -- go2rtc -config /config/go2rtc.yaml
     volumes:
-      - ./go2rtc.yaml:/config/go2rtc.yaml:ro
+      - ./go2rtc.yaml:/config-src/go2rtc.yaml:ro
     restart: unless-stopped
 
 volumes:
