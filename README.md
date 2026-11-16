@@ -77,6 +77,6 @@ Login attempts are limited to 10 per 5 minutes overall and 5 per 5 minutes per c
 ## Troubleshooting
 
 - **Banner "Hik-Connect yêu cầu CAPTCHA"**: open the official Hik-Connect app, log in once, then press "Thử lại". Repeated failed logins cause this.
-- **Banner "Hik-Connect từ chối tài khoản"**: the password in the Secret is wrong or was changed. Update the Secret, restart the pod (or press "Thử lại" after the Secret reached the pod).
+- **Banner "Hik-Connect từ chối tài khoản"**: the password in the Secret is wrong or was changed. Update the Secret, restart the pod (`kubectl -n camviewer rollout restart deployment/camviewer`).
 - **Camera missing from the grid**: cameras the cloud reports offline are hidden and listed under the "⋯" menu.
 - **Video stuck on "Đang kết nối"**: try "Làm mới"; check `/api/status` for the stream state and the app logs.
