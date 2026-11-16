@@ -1,0 +1,10 @@
+.env
+*.env
+data/
+.venv/
+__pycache__/
+*.ts
+*.mp4
+spike-out/
+.pytest_cache/
+.ruff_cache/
