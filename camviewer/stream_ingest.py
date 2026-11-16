@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import queue
 import subprocess
 import threading
 import time
@@ -91,10 +92,9 @@ class StreamIngest:
 
     # ---- lifecycle -------------------------------------------------------
     def start(self) -> None:
-        for target, name in ((self._run, "ingest"), (self._watchdog, "watchdog")):
-            thread = threading.Thread(target=target, name=f"{name}-{self.stream_id}", daemon=True)
-            thread.start()
-            self._threads.append(thread)
+        thread = threading.Thread(target=self._run, name=f"ingest-{self.stream_id}", daemon=True)
+        thread.start()
+        self._threads.append(thread)
 
     @property
     def alive(self) -> bool:
@@ -107,8 +107,8 @@ class StreamIngest:
         for thread in self._threads:
             thread.join(timeout=5)
         self._stop_ffmpeg()  # a write racing with stop may have respawned it
-        for queue in list(self.subscribers):
-            self._offer(queue, None)
+        for sub_q in list(self.subscribers):
+            self._offer(sub_q, None)
 
     def force_reconnect(self) -> None:
         """Drop the current VTM session; the loop reopens it with the same ffmpeg."""
@@ -198,58 +198,84 @@ class StreamIngest:
         return True
 
     def _run_session(self) -> None:
+        """One VTM session. The blocking read lives in a pump thread so a stall or a rotation
+        can abandon it at once instead of waiting for the library's socket timeout."""
         session = self.account.open_stream(self.camera)
         self._session = session
         self._session_started = self.last_bytes_at = time.monotonic()
         self._got_data = False
+        chunks: queue.Queue[Any] = queue.Queue()
+        abandoned = threading.Event()
         try:
             info = session.start()
             result = getattr(info, "result", 0)
             if result not in (0, None):
                 raise StreamError(f"stream start result {result}")
             self.last_bytes_at = time.monotonic()
-            fmt: str | None = None
-            for chunk in session.iter_annex_b_chunks():
-                if self._stop.is_set():
-                    return
-                if fmt is None:
-                    fmt = INPUT_FORMAT.get(detect_transport(chunk), "h264")
-                self._write(chunk, fmt)
-                self.last_bytes_at = time.monotonic()
-                self._auth_streak = 0
-                self._transient_streak = 0
-                self._got_data = True
-                self.state = "live"
+            threading.Thread(
+                target=self._pump, args=(session, chunks, abandoned), daemon=True,
+                name=f"pump-{self.stream_id}",
+            ).start()  # fmt: skip
+            self._consume(chunks)
         finally:
+            abandoned.set()
             self._session = None
             try:
                 session.close()
             except Exception:  # noqa: BLE001
                 log.debug("session close failed stream=%s", self.stream_id)
 
-    def _watchdog(self) -> None:
-        """Close the session on a stall (unblocks the reader) or when it is due for rotation.
+    @staticmethod
+    def _pump(session: Any, chunks: queue.Queue[Any], abandoned: threading.Event) -> None:
+        try:
+            for chunk in session.iter_annex_b_chunks():
+                if abandoned.is_set():
+                    return
+                chunks.put(chunk)
+            chunks.put(None)  # clean end of session
+        except Exception as exc:  # noqa: BLE001 - re-raised in the consumer
+            if not abandoned.is_set():
+                chunks.put(exc)
 
-        The cloud silently stops sending data ~240s into a session and the library only
-        notices after its own 15s timeout, so we rotate early and detect stalls fast.
-        """
-        tick = max(0.1, min(1.0, self.stall_seconds / 4))
-        while not self._stop.wait(tick):
-            if self._session is None:
+    def _consume(self, chunks: queue.Queue[Any]) -> None:
+        fmt: str | None = None
+        while not self._stop.is_set():
+            try:
+                item = chunks.get(timeout=0.2)
+            except queue.Empty:
+                item = queue.Empty
+            if self._forced.is_set() or self._timer_expired():
+                self._forced.set()  # reconnect straight away with the same ffmpeg
+                return
+            if item is queue.Empty:
                 continue
-            now = time.monotonic()
-            limit = self.stall_seconds
-            if not self._got_data:
-                limit = max(limit, FIRST_DATA_SECONDS)
-            if now - self.last_bytes_at > limit:
-                log.warning("stream=%s stalled, forcing reconnect", self.stream_id)
-                self.last_bytes_at = now
-                self.force_reconnect()
-            elif self._got_data and now - self._session_started > self.rotate_seconds:
-                log.info("stream=%s rotating session", self.stream_id)
-                self.rotations += 1
-                self._session_started = now
-                self.force_reconnect()
+            if item is None:
+                return
+            if isinstance(item, Exception):
+                raise item
+            if fmt is None:
+                fmt = INPUT_FORMAT.get(detect_transport(item), "h264")
+            self._write(item, fmt)
+            self.last_bytes_at = time.monotonic()
+            self._auth_streak = 0
+            self._transient_streak = 0
+            self._got_data = True
+            self.state = "live"
+
+    def _timer_expired(self) -> bool:
+        """True when the stall limit or the rotation age was reached (and counts it)."""
+        now = time.monotonic()
+        limit = self.stall_seconds
+        if not self._got_data:
+            limit = max(limit, FIRST_DATA_SECONDS)
+        if now - self.last_bytes_at > limit:
+            log.warning("stream=%s stalled, reopening session", self.stream_id)
+            return True
+        if self._got_data and now - self._session_started > self.rotate_seconds:
+            log.info("stream=%s rotating session", self.stream_id)
+            self.rotations += 1
+            return True
+        return False
 
     # ---- ffmpeg ----------------------------------------------------------
     def _write(self, chunk: bytes, fmt: str) -> None:
@@ -311,22 +337,22 @@ class StreamIngest:
     # ---- fan-out (event loop thread) ---------------------------------------
     def _end_subscribers(self) -> None:
         """Tell consumers the ingest is over so their HTTP source closes."""
-        for queue in list(self.subscribers):
-            self._offer(queue, None)
+        for sub_q in list(self.subscribers):
+            self._offer(sub_q, None)
 
     def _broadcast(self, data: bytes) -> None:
-        for queue in self.subscribers:
-            self._offer(queue, data)
+        for sub_q in self.subscribers:
+            self._offer(sub_q, data)
 
     @staticmethod
-    def _offer(queue: asyncio.Queue[bytes | None], item: bytes | None) -> None:
+    def _offer(sub_q: asyncio.Queue[bytes | None], item: bytes | None) -> None:
         """Bounded queue; a slow consumer loses the oldest data, never blocks ingest."""
         while True:
             try:
-                queue.put_nowait(item)
+                sub_q.put_nowait(item)
                 return
             except asyncio.QueueFull:
                 try:
-                    queue.get_nowait()
+                    sub_q.get_nowait()
                 except asyncio.QueueEmpty:
                     pass
