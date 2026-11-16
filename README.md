@@ -21,7 +21,7 @@ phone --> app :8080 (login, API, static UI, allowlisted proxy) --> go2rtc (loopb
 
 - One Hik-Connect login is shared by all cameras; an ingest starts when the first viewer connects and stops 30 s after the last one leaves (`MAX_STREAMS`, default 3).
 - Reconnect layers: the ingest rotates the cloud session every 150 s (the cloud stops sending data at about 240 s, and a session that old makes the camera refuse new sessions for 90-160 s; sessions up to 200 s reopen instantly) and reopens within 2 s of a stall while keeping the same ffmpeg; go2rtc re-pulls the source; the browser watchdog restarts the player when the picture freezes.
-- The browser plays HEVC directly when it can (`{id}` stream) and falls back to a go2rtc H.264 transcode (`{id}_h264`). Add `?stream=hevc` or `?stream=h264` to the page URL to force one.
+- The browser plays HEVC directly when it can (`{id}` stream) and falls back to an H.264 transcode (`{id}_h264`) made by the app's own ffmpeg (go2rtc's bundled ffmpeg 8 mis-decodes this camera's HEVC); go2rtc only relays it. Add `?stream=hevc` or `?stream=h264` to the page URL to force one.
 - go2rtc listens on `127.0.0.1` only (its API can create `exec:` sources). The app proxies just the allowlisted routes and stream names after checking the session cookie and `Origin`.
 - Hik-Connect failures: three auth failures in a row or a CAPTCHA stop all retries and show a banner with a "Thử lại" button (it re-runs the login). A temporarily unreachable cloud is retried with back-off.
 
@@ -46,7 +46,7 @@ uv run ruff check
 
 ## Deploy to k3s (192.168.1.2) behind Cloudflare
 
-Public URL `https://cam.ult.vn` terminates TLS at Cloudflare; nginx on the host proxies to the NodePort and must pass `Host`, `X-Forwarded-*` and WebSocket upgrade headers (the `Origin` check compares `Origin` to `Host`).
+Public URL `https://cam.ult.vn` (wildcard DNS, not Cloudflare-proxied) terminates TLS at the host nginx (Webinoly site, Let's Encrypt), which proxies to the NodePort. Its `apps.d/cam.ult.vn-proxy.conf` uses `location ^~ /` so Webinoly's static/deny regex locations never take app paths, passes `Host`, `X-Real-IP`, `X-Forwarded-*` and WebSocket upgrade headers (the `Origin` check compares `Origin` to `Host`), and has long read timeouts for live video.
 
 ```bash
 # secrets file lives outside the repo, plain KEY=value lines, no quotes:
