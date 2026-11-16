@@ -30,6 +30,9 @@ export class LiveTile {
     this.player.video.muted = true;
     this.player.video.playsInline = true;
     this.player.video.setAttribute('playsinline', '');
+    // The vendored player turns native controls on; this UI has its own.
+    this.player.video.controls = false;
+    this.player.video.addEventListener('playing', () => { this.player.video.controls = false; });
     this.watchdog = new StreamWatchdog(
       this.player, this.camera.streams, codec, !force, (state, detail) => this.onStatus(state, detail));
     this.watchdog.start();

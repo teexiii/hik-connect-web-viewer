@@ -16,14 +16,14 @@ export class FullscreenViewer {
     this.q('.refresh').addEventListener('click', () => this.refresh());
     this.q('.snapshot').addEventListener('click', () => this.snapshot());
     this.q('.clip').addEventListener('click', () => this.clip());
-    this.q('.retry').addEventListener('click', () => this.tile?.retry());
+    this.q(':scope > .retry').addEventListener('click', () => this.tile?.retry());
     this.q('.live').addEventListener('click', () => this.toggleChrome());
     this.q('.viewer-bottom').addEventListener('click', () => this.showChrome());
   }
 
   open(camera) {
     this.camera = camera;
-    this.q('.title').textContent = camera.name;
+    this.q('.viewer-top .title').textContent = camera.name;
     this.q('.live').replaceChildren();
     delete this.root.dataset.state;
     this.setStatus('connecting');
@@ -44,10 +44,10 @@ export class FullscreenViewer {
   setStatus(state) {
     if (state === this.root.dataset.state) return; // the watchdog repeats 'live' every second
     const label = state === 'live' ? 'LIVE' : (STATUS_LABEL[state] ?? state);
-    this.q('.status').textContent = label;
+    this.q('.viewer-top .status').textContent = label;
     this.q('.veil-text').textContent = STATUS_LABEL[state] ?? '';
     this.root.dataset.state = state;
-    this.q('.retry').hidden = state !== 'failed';
+    this.q(':scope > .retry').hidden = state !== 'failed';
     this.showChrome();
   }
 

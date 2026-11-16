@@ -20,6 +20,7 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
 html, body { margin: 0; background: var(--ink); color: var(--text); }
 body {
   font: 15px/1.45 var(--font); overflow-x: hidden; min-height: 100dvh;
@@ -128,6 +129,7 @@ button i { font-size: 20px; line-height: 1; }
 video-stream .info { display: none; }
 video-stream { display: block; }
 video-stream video { background: #000; }
+video::-webkit-media-controls { display: none !important; }
 
 /* ---------- fullscreen viewer ---------- */
 .viewer { position: fixed; inset: 0; z-index: 10; background: #000; overflow: hidden; animation: fade .25s var(--ease); }
