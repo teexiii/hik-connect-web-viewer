@@ -49,6 +49,9 @@ def ffmpeg_command(ffmpeg_path: str, input_format: str) -> list[str]:
         "-fflags", "+genpts+igndts+discardcorrupt",
         "-use_wallclock_as_timestamps", "1",
         "-f", input_format, "-i", "pipe:0",
+        # Video only: the camera's audio track sometimes probes as a headerless MP3, which makes
+        # the muxer fail to write its header and kills the whole ingest. The UI is muted anyway.
+        "-map", "0:v:0", "-an",
         "-c", "copy", "-f", "mpegts", "-muxdelay", "0", "pipe:1",
     ]  # fmt: skip
 
