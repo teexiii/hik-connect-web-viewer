@@ -8,3 +8,4 @@ __pycache__/
 spike-out/
 .pytest_cache/
 .ruff_cache/
+plans/

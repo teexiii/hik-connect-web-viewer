@@ -1,6 +1,30 @@
-# camviewer
+# hik-connect-web-viewer
 
-Mobile-first web viewer for Hik-Connect cloud cameras: sign in to the web app, land in the live view (grid only when more than one camera is online), take snapshots and record clips. Live video reconnects on its own when the cloud session times out.
+## ❤️ Ủng hộ / Support
+
+Nếu dự án này hữu ích với bạn, hãy ủng hộ mình một ly cà phê nhé. Cảm ơn rất nhiều!
+
+If this project helps you, consider buying me a coffee. Thank you!
+
+<p align="center">
+  <img src="assets/support/donate-qr.jpg" alt="Ủng hộ / Support - LÂM HIỀN TÂM (MoMo · VietQR · napas 247)" width="360">
+</p>
+
+<p align="center"><b>LÂM HIỀN TÂM</b> - MoMo · VietQR · napas 247</p>
+
+## 🤖 How this was built
+
+This entire project, a Python streaming backend, a mobile web player and a k3s deployment, was shipped in **one shot** by an autonomous loop skill (brainstorm → plan → cook → review), powered by **[AgentKit Engineer](https://agentkit.best/engineer?ref=EPU2ZB5U)**.
+
+Want the same workflow? [**Get AgentKit Engineer with 50% off**](https://agentkit.best/engineer?ref=EPU2ZB5U).
+
+---
+
+An iVMS-4200-style **mobile web viewer for Hik-Connect cloud cameras**: sign in, land straight in the live view (a grid only when more than one camera is online), take snapshots and record clips. Live video keeps playing on its own when the Hik-Connect cloud session times out, and plays smoothly on iPhone over WebRTC.
+
+## Why
+
+Hikvision Wi-Fi cameras that are only reachable through Hik-Connect (no LAN RTSP) can be watched in the official app only, and its cloud session drops every few minutes. This project keeps one server-side cloud session alive, re-opens it before it expires, and serves a plain H.264 stream to any browser, so a bookmarked page on a phone just works.
 
 ## Read this first
 
@@ -22,7 +46,7 @@ phone --> app :8080 (login, API, static UI, allowlisted proxy) --> go2rtc (loopb
 - One Hik-Connect login is shared by all cameras; an ingest starts when the first viewer connects and stops 30 s after the last one leaves (`MAX_STREAMS`, default 3).
 - Reconnect layers: the ingest rotates the cloud session every 150 s (the cloud stops sending data at about 240 s, and a session that old makes the camera refuse new sessions for 90-160 s; sessions up to 200 s reopen instantly) and reopens within 2 s of a stall while keeping the same ffmpeg; go2rtc re-pulls the source; the browser watchdog restarts the player when the picture freezes.
 - Every browser gets an H.264 transcode (`{id}_h264`, pinned to 1280x720) made by the app's own ffmpeg: the cloud switches resolution mid-stream, which broke HEVC passthrough on iPhone (green frame, then crash), and go2rtc's bundled ffmpeg 8 mis-decodes this camera's HEVC. `?stream=hevc` forces passthrough for debugging.
-- Playback prefers WebRTC (go2rtc media on hostPort 61873 TCP+UDP, candidates `192.168.1.2:61873` and `cam.ult.vn:61873`, signaling through the app's authenticated WebSocket) and falls back to MSE. The router forwards WAN 61873 TCP+UDP to 192.168.1.2 (rule `cam-webrtc`) so 4G viewers also get WebRTC. The watchdog counts painted frames (`requestVideoFrameCallback`) because a WebRTC stream's clock keeps running while the picture is frozen.
+- Playback prefers WebRTC (go2rtc media on a hostPort, TCP+UDP; candidates are the server's LAN address and the public hostname; signaling goes through the app's authenticated WebSocket) and falls back to MSE. Forward that port on the router so viewers on mobile data also get WebRTC; without it they stay on MSE. The watchdog counts painted frames (`requestVideoFrameCallback`) because a WebRTC stream's clock keeps running while the picture is frozen.
 - go2rtc listens on `127.0.0.1` only (its API can create `exec:` sources). The app proxies just the allowlisted routes and stream names after checking the session cookie and `Origin`.
 - Hik-Connect failures: three auth failures in a row or a CAPTCHA stop all retries and show a banner with a "Thử lại" button (it re-runs the login). A temporarily unreachable cloud is retried with back-off.
 
@@ -45,9 +69,11 @@ uv run pytest
 uv run ruff check
 ```
 
-## Deploy to k3s (192.168.1.2) behind Cloudflare
+## Deploy to k3s
 
-Public URL `https://cam.ult.vn` (wildcard DNS, not Cloudflare-proxied) terminates TLS at the host nginx (Webinoly site, Let's Encrypt), which proxies to the NodePort. Its `apps.d/cam.ult.vn-proxy.conf` uses `location ^~ /` so Webinoly's static/deny regex locations never take app paths, passes `Host`, `X-Real-IP`, `X-Forwarded-*` and WebSocket upgrade headers (the `Origin` check compares `Origin` to `Host`), and has long read timeouts for live video.
+The manifests in `deploy/k3s/` are the author's home setup: change the server address in `deploy.sh` (`ULT_HOST`) and the WebRTC port and candidates in `deploy/k3s/configmap-go2rtc.yaml` and `deployment.yaml` before using them.
+
+The public URL terminates TLS at the host nginx (Let's Encrypt), which proxies to the NodePort. The nginx site uses `location ^~ /` so Webinoly's static/deny regex locations never take app paths, passes `Host`, `X-Real-IP`, `X-Forwarded-*` and WebSocket upgrade headers (the `Origin` check compares `Origin` to `Host`), and has long read timeouts for live video.
 
 ```bash
 # secrets file lives outside the repo, plain KEY=value lines, no quotes:
@@ -81,3 +107,7 @@ Login attempts are limited to 10 per 5 minutes overall and 5 per 5 minutes per c
 - **Banner "Hik-Connect từ chối tài khoản"**: the password in the Secret is wrong or was changed. Update the Secret, restart the pod (`kubectl -n camviewer rollout restart deployment/camviewer`).
 - **Camera missing from the grid**: cameras the cloud reports offline are hidden and listed under the "⋯" menu.
 - **Video stuck on "Đang kết nối"**: try "Làm mới"; check `/api/status` for the stream state and the app logs.
+
+## License
+
+[MIT](LICENSE). Uses the unofficial [`hikcloudstream`](https://pypi.org/project/hikcloudstream/) library and [go2rtc](https://github.com/AlexxIT/go2rtc) (MIT). Not affiliated with or endorsed by Hikvision.
