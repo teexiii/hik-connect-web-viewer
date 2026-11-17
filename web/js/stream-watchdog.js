@@ -45,6 +45,18 @@ export class StreamWatchdog {
     // WebRTC first (lowest latency, smooth on iPhone); MSE keeps playing until it connects
     // and stays the fallback off the LAN.
     this.player.mode = 'webrtc,mse,hls';
+    // Count frames actually painted: a WebRTC MediaStream keeps currentTime running even when
+    // no frame arrives, so only a frame counter can see a frozen picture.
+    const video = this.player.video;
+    this.frames = 0;
+    this.countFrames = typeof video?.requestVideoFrameCallback === 'function';
+    if (this.countFrames) {
+      const onFrame = () => {
+        this.frames += 1;
+        if (!this.stopped) video.requestVideoFrameCallback(onFrame);
+      };
+      video.requestVideoFrameCallback(onFrame);
+    }
     this.connect();
     this.timer = setInterval(() => this.tick(), 1000);
     document.addEventListener('visibilitychange', this.onVisible);
@@ -65,8 +77,13 @@ export class StreamWatchdog {
     this.reconnect(0);
   }
 
+  /** Playback progress: painted frames when countable, else the media clock. */
+  progress() {
+    return this.countFrames ? this.frames : this.player.video?.currentTime ?? 0;
+  }
+
   connect() {
-    this.lastTime = -1;
+    this.lastTime = this.countFrames ? this.frames : -1;
     this.lastAdvance = Date.now();
     this.playingSince = 0;
     this.everPlayed = false;
@@ -79,8 +96,9 @@ export class StreamWatchdog {
     if (this.stopped || !video || document.hidden) return;
     const now = Date.now();
     if (video.error || video.ended) return this.reconnect();
-    if (video.currentTime > 0 && video.currentTime > this.lastTime + 0.05) {
-      this.lastTime = video.currentTime;
+    const pos = this.progress();
+    if (pos > 0 && pos > this.lastTime + (this.countFrames ? 0 : 0.05)) {
+      this.lastTime = pos;
       this.lastAdvance = now;
       this.playingSince ||= now;
       this.everPlayed = true;
