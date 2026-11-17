@@ -42,6 +42,8 @@ grid.load().then(({ online, offline }) => {
     grid.pause(true);
     viewer.open(online[0]);
   }
+  // Nothing to show: check again shortly so a camera that comes back opens on its own.
+  if (!online.length) setTimeout(() => location.reload(), 30000);
 }).catch((err) => {
   document.querySelector('#grid').textContent = `Không tải được danh sách camera: ${err.message}`;
 });

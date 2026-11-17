@@ -136,14 +136,19 @@ class HikAccount:
             if time.monotonic() - self._online_at < ONLINE_TTL_SECONDS:
                 return dict(self._online)
             try:
-                payload = self._client.request_json(
-                    "GET",
-                    "/v3/userdevices/v1/devices/pagelist",
-                    params={"groupId": -1, "limit": 50, "offset": 0, "filter": "STATUS"},
-                )
-            except Exception:  # noqa: BLE001 - online flag is advisory only
-                log.debug("device status lookup failed")
-                return dict(self._online)
+                payload = self._device_status_page()
+            except Exception:  # noqa: BLE001 - usually an expired cloud token
+                # Nothing else re-logs in while no one is streaming, so an expired token would
+                # keep serving the last answer forever (a camera stuck "offline"). Re-login once;
+                # if that fails too, report "unknown" (treated as online) rather than stale data.
+                try:
+                    self.relogin()
+                    payload = self._device_status_page()
+                except Exception as exc:  # noqa: BLE001 - online flag is advisory only
+                    log.warning("device status lookup failed: %s", type(exc).__name__)
+                    self._online = {}
+                    self._online_at = time.monotonic()
+                    return {}
             self._online = {
                 str(d["deviceSerial"]): d.get("status") == 1
                 for d in payload.get("deviceInfos") or []
@@ -151,6 +156,14 @@ class HikAccount:
             }
             self._online_at = time.monotonic()
             return dict(self._online)
+
+    def _device_status_page(self) -> dict[str, Any]:
+        assert self._client is not None
+        return self._client.request_json(
+            "GET",
+            "/v3/userdevices/v1/devices/pagelist",
+            params={"groupId": -1, "limit": 50, "offset": 0, "filter": "STATUS"},
+        )
 
     def cameras(self, *, force: bool = False) -> list[Any]:
         with self._lock:
