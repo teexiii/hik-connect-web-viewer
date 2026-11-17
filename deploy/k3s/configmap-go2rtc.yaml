@@ -12,12 +12,14 @@ data:
     rtsp:
       listen: "127.0.0.1:8554"
     # WebRTC media only (signaling still goes through the app's authenticated WebSocket proxy).
-    # hostPort 8555 TCP+UDP on the node; the candidate tells browsers on the home LAN where to send.
-    # Off the LAN (no router forward) WebRTC fails and the player keeps using MSE.
+    # hostPort 61873 TCP+UDP on the node (above the Linux ephemeral range), forwarded from the WAN
+    # by the router. Candidates: the LAN address for home viewers, cam.ult.vn (dynamic-DNS public
+    # IP) for viewers on 4G. If WebRTC cannot connect the player keeps using MSE.
     webrtc:
-      listen: ":8555"
+      listen: ":61873"
       candidates:
-        - 192.168.1.2:8555
+        - 192.168.1.2:61873
+        - cam.ult.vn:61873
       ice_servers: []
     srtp:
       listen: ""
