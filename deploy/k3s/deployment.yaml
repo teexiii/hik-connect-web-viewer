@@ -69,6 +69,10 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - cp /config-src/go2rtc.yaml /config/go2rtc.yaml && exec /sbin/tini -- go2rtc -config /config/go2rtc.yaml
+          ports:
+            # WebRTC media for LAN viewers; the API stays on loopback.
+            - {name: webrtc-tcp, containerPort: 8555, hostPort: 8555, protocol: TCP}
+            - {name: webrtc-udp, containerPort: 8555, hostPort: 8555, protocol: UDP}
           volumeMounts:
             - name: go2rtc-config
               mountPath: /config-src

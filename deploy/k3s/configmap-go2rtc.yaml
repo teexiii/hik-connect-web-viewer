@@ -11,8 +11,14 @@ data:
       listen: "127.0.0.1:1984"
     rtsp:
       listen: "127.0.0.1:8554"
+    # WebRTC media only (signaling still goes through the app's authenticated WebSocket proxy).
+    # hostPort 8555 TCP+UDP on the node; the candidate tells browsers on the home LAN where to send.
+    # Off the LAN (no router forward) WebRTC fails and the player keeps using MSE.
     webrtc:
-      listen: ""
+      listen: ":8555"
+      candidates:
+        - 192.168.1.2:8555
+      ice_servers: []
     srtp:
       listen: ""
     log:

@@ -42,7 +42,9 @@ export class StreamWatchdog {
   }
 
   start() {
-    this.player.mode = 'mse,hls';
+    // WebRTC first (lowest latency, smooth on iPhone); MSE keeps playing until it connects
+    // and stays the fallback off the LAN.
+    this.player.mode = 'webrtc,mse,hls';
     this.connect();
     this.timer = setInterval(() => this.tick(), 1000);
     document.addEventListener('visibilitychange', this.onVisible);
