@@ -6,34 +6,21 @@ const FIRST_FRAME_MS = 20000; // cloud open + transcode can take a while
 const STABLE_MS = 30000; // playing this long resets the failure counter
 const MAX_FAILS = 10;
 
-const CODEC_PREF_KEY = 'camviewer-codec';
-const HEVC_FAILS_BEFORE_FALLBACK = 1;
-const HEVC_FIRST_FRAME_MS = 10000; // a decodable HEVC stream shows its first frame quickly
-
-function readPref() {
-  try { return localStorage.getItem(CODEC_PREF_KEY); } catch { return null; }
-}
-
-function savePref(codec) {
-  try { localStorage.setItem(CODEC_PREF_KEY, codec); } catch { /* private mode */ }
-}
-
-/** HEVC passthrough when the browser claims support, else go2rtc's H.264 transcode. */
+/**
+ * H.264 by default. The Hik cloud switches resolution mid-stream (1080p <-> 720p); the app's
+ * transcode pins one size, while HEVC passthrough paints a green frame and then crashes iOS
+ * Safari's decoder. HEVC stays reachable for debugging with ?stream=hevc.
+ */
 export function pickCodec(force) {
-  if (force === 'hevc' || force === 'h264') return force;
-  if (readPref() === 'h264') return 'h264';
-  const MS = window.ManagedMediaSource ?? window.MediaSource;
-  return MS?.isTypeSupported?.('video/mp4; codecs="hvc1.1.6.L93.B0"') ? 'hevc' : 'h264';
+  return force === 'hevc' ? 'hevc' : 'h264';
 }
 
 export class StreamWatchdog {
   /** @param player <video-stream>; @param onStatus (state, detail) => void */
-  constructor(player, streams, codec, canFallback, onStatus) {
+  constructor(player, streams, codec, onStatus) {
     this.player = player;
     this.streams = streams;
     this.codec = codec;
-    this.canFallback = canFallback; // not when the URL forces a codec
-    this.hasPlayedEver = false;
     this.onStatus = onStatus;
     this.fails = 0;
     this.lastTime = -1;
@@ -95,13 +82,11 @@ export class StreamWatchdog {
       this.lastAdvance = now;
       this.playingSince ||= now;
       this.everPlayed = true;
-      this.hasPlayedEver = true;
       if (now - this.playingSince > STABLE_MS) this.fails = 0;
       this.emit('live');
       return;
     }
-    let limit = this.everPlayed ? STALL_MS : FIRST_FRAME_MS;
-    if (!this.hasPlayedEver && this.codec === 'hevc') limit = HEVC_FIRST_FRAME_MS;
+    const limit = this.everPlayed ? STALL_MS : FIRST_FRAME_MS;
     if (now - this.lastAdvance > limit) this.reconnect();
   }
 
@@ -110,12 +95,6 @@ export class StreamWatchdog {
     if (this.stopped || this.retryTimer) return;
     if (delay === undefined) {
       this.fails += 1;
-      // Browsers can claim HEVC support yet fail to decode it: fall back to H.264 for good.
-      if (this.canFallback && this.codec === 'hevc' && !this.hasPlayedEver
-          && this.fails >= HEVC_FAILS_BEFORE_FALLBACK) {
-        this.codec = 'h264';
-        savePref('h264');
-      }
       delay = BACKOFF_MS[Math.min(this.fails - 1, BACKOFF_MS.length - 1)];
     }
     // Past the limit, show "Mất kết nối" + "Thử lại" but never give up: a camera that comes

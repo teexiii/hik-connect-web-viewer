@@ -24,4 +24,5 @@ async def test_transcode_pipes_source_through_the_process(monkeypatch):
 def test_transcode_command_is_video_only_h264():
     cmd = h264_transcode.transcode_command("ffmpeg")
     assert cmd[cmd.index("-c:v") + 1] == "libx264"
+    assert cmd[cmd.index("-vf") + 1].startswith("scale=1280:720")
     assert "-an" in cmd

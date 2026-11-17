@@ -22,6 +22,9 @@ def transcode_command(ffmpeg_path: str) -> list[str]:
         ffmpeg_path, "-hide_banner", "-loglevel", "error",
         "-fflags", "+genpts+discardcorrupt", "-f", "mpegts", "-i", "pipe:0",
         "-map", "0:v:0", "-an",
+        # The cloud switches resolution mid-stream; a fixed output size keeps browser decoders
+        # (iOS Safari especially) from painting green borders or failing on the size change.
+        "-vf", "scale=1280:720,setsar=1",
         "-c:v", "libx264", "-preset", "superfast", "-tune", "zerolatency",
         "-profile:v", "high", "-level:v", "4.1", "-pix_fmt", "yuv420p", "-g", "30",
         "-f", "mpegts", "-muxdelay", "0", "pipe:1",

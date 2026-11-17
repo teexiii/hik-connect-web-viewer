@@ -34,7 +34,7 @@ export class LiveTile {
     this.player.video.controls = false;
     this.player.video.addEventListener('playing', () => { this.player.video.controls = false; });
     this.watchdog = new StreamWatchdog(
-      this.player, this.camera.streams, codec, !force, (state, detail) => this.onStatus(state, detail));
+      this.player, this.camera.streams, codec, (state, detail) => this.onStatus(state, detail));
     this.watchdog.start();
   }
 
