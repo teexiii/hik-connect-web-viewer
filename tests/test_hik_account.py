@@ -154,6 +154,42 @@ def test_online_map_never_serves_stale_status_when_lookup_keeps_failing(state, m
     assert account.online_map() == {}  # unknown, not the stale "offline"
 
 
+def test_online_map_relogs_in_when_token_expiry_returns_no_device_list(state):
+    logins = []
+
+    class SilentExpiryClient(FakeClient):
+        def login(self, creds):
+            logins.append(creds)
+
+        def request_json(self, method, path, params=None):
+            if len(logins) < 2:  # expired token: no exception, just no deviceInfos
+                return {"meta": {"code": 401}}
+            return {"deviceInfos": [{"deviceSerial": "A", "status": 1}]}
+
+    account = HikAccount(state, client_factory=SilentExpiryClient)
+    account.login("u", "p")
+    assert account.online_map() == {"A": True}
+    assert len(logins) == 2
+
+
+def test_cameras_relogs_in_when_listing_fails(state):
+    logins = []
+
+    class ExpiringListClient(FakeClient):
+        def login(self, creds):
+            logins.append(creds)
+
+        def list_cameras(self):
+            if len(logins) < 2:
+                raise RuntimeError("401")
+            return ["cam"]
+
+    account = HikAccount(state, client_factory=ExpiringListClient)
+    account.login("u", "p")
+    assert account.cameras() == ["cam"]
+    assert len(logins) == 2
+
+
 def test_classify():
     from pyezvizapi.exceptions import DeviceException
 

@@ -159,11 +159,17 @@ class HikAccount:
 
     def _device_status_page(self) -> dict[str, Any]:
         assert self._client is not None
-        return self._client.request_json(
+        payload = self._client.request_json(
             "GET",
             "/v3/userdevices/v1/devices/pagelist",
             params={"groupId": -1, "limit": 50, "offset": 0, "filter": "STATUS"},
         )
+        # An expired token is answered without raising, just with no device list; treat that as a
+        # failure so the caller re-logs in instead of reporting every camera as "unknown" forever.
+        if not isinstance(payload, dict) or "deviceInfos" not in payload:
+            code = (payload.get("meta") or {}).get("code") if isinstance(payload, dict) else None
+            raise RuntimeError(f"device status answer without deviceInfos (meta code {code})")
+        return payload
 
     def cameras(self, *, force: bool = False) -> list[Any]:
         with self._lock:
@@ -171,7 +177,11 @@ class HikAccount:
                 return []
             fresh = time.monotonic() - self._cameras_at < CAMERA_TTL_SECONDS
             if force or not self._cameras or not fresh:
-                self._cameras = self._client.list_cameras()
+                try:
+                    self._cameras = self._client.list_cameras()
+                except Exception:  # noqa: BLE001 - usually an expired cloud token
+                    self.relogin()
+                    self._cameras = self._client.list_cameras()
                 self._cameras_at = time.monotonic()
             return list(self._cameras)
 
