@@ -5,7 +5,7 @@ from hikcloudstream import AuthenticationError, CaptchaRequiredError, StreamType
 
 from camviewer import hik_account
 from camviewer.account_state import AccountState
-from camviewer.hik_account import AuthError, CaptchaError, HikAccount, classify
+from camviewer.hik_account import AuthError, CaptchaError, HikAccount, StreamError, classify
 
 
 class FakeClient:
@@ -196,4 +196,6 @@ def test_classify():
     assert classify(CaptchaRequiredError("x")) == "captcha"
     assert classify(AuthenticationError("x")) == "auth"
     assert classify(DeviceException("x")) == "offline"
+    assert classify(StreamError("stream start result 5404")) == "busy"
+    assert classify(StreamError("stream start result 5000")) == "offline"
     assert classify(RuntimeError("x")) == "other"

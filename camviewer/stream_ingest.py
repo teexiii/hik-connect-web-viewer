@@ -23,6 +23,7 @@ log = logging.getLogger("camviewer.ingest")
 GENERIC_BACKOFF = (0.5, 1.0, 2.0, 5.0)
 OFFLINE_BACKOFF = (2.0, 5.0, 10.0, 20.0, 40.0, 60.0)
 TRANSIENT_BACKOFF = (1.0, 2.0, 5.0)
+BUSY_RETRY_SECONDS = 10.0  # camera refusing new sessions (5404) for up to ~160 s
 FIRST_DATA_SECONDS = 6.0
 STABLE_SECONDS = 60.0
 AUTH_STREAK_LIMIT = 3
@@ -167,6 +168,8 @@ class StreamIngest:
                 delay = 0.0
             elif kind == "transient":
                 delay = TRANSIENT_BACKOFF[self._transient_streak - 1]
+            elif kind == "busy":
+                delay = BUSY_RETRY_SECONDS
             else:
                 delay = backoff_delay(attempt, offline=kind == "offline")
             attempt = 0 if forced else attempt + 1

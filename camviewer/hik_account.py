@@ -42,13 +42,17 @@ class StreamError(Exception):
 
 
 def classify(exc: BaseException) -> str:
-    """Map a stream-loop exception to auth | captcha | transient | offline | other."""
+    """Map a stream-loop exception to auth | captcha | transient | busy | offline | other."""
     if isinstance(exc, CaptchaError | CaptchaRequiredError):
         return "captcha"
     if isinstance(exc, AuthError | AuthenticationError):
         return "auth"
     if isinstance(exc, StreamNegotiationError) and "VTM resource" in str(exc):
         return "transient"  # right after a session ends the cloud briefly forgets the resource
+    if isinstance(exc, StreamError) and "5404" in str(exc):
+        # The camera refuses a new session for a minute or two after the previous one ended
+        # (rotation, a viewer leaving, a redeploy). It is online; keep retrying at a steady pace.
+        return "busy"
     if isinstance(exc, DeviceException | StreamError):
         return "offline"
     return "other"

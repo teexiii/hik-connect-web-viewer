@@ -110,8 +110,24 @@ async def test_captcha_stops_immediately(tmp_path):
         manager.stop_all()
 
 
-async def test_offline_result_marks_offline_and_retries(tmp_path):
+async def test_busy_camera_keeps_retrying_without_going_offline(tmp_path, monkeypatch):
+    monkeypatch.setattr(stream_ingest, "BUSY_RETRY_SECONDS", 0.05)
     account = FakeAccount(tmp_path, [lambda: FakeSession([], result=5404)])
+    manager = LiveIngestManager(account)
+    ingest = await manager.ensure(SID)
+    try:
+        for _ in range(50):
+            if account.opened >= 3:
+                break
+            await asyncio.sleep(0.1)
+        assert account.opened >= 3
+        assert ingest.state == "reconnecting"
+    finally:
+        manager.stop_all()
+
+
+async def test_offline_result_marks_offline_and_retries(tmp_path):
+    account = FakeAccount(tmp_path, [lambda: FakeSession([], result=5000)])
     manager = LiveIngestManager(account)
     ingest = await manager.ensure(SID)
     try:

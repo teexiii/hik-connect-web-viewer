@@ -71,6 +71,15 @@ async def test_clip_recorder_limits_and_cleanup(tmp_path):
     assert len(list(clips.glob("*.mp4"))) <= 19
 
 
+def test_stream_failure_does_not_hide_a_camera_the_cloud_reports_online():
+    from camviewer.camera_routes import _online
+
+    assert _online(True, {"state": "offline"}) is True
+    assert _online(None, {"state": "offline"}) is False
+    assert _online(None, {"state": "live"}) is None
+    assert _online(False, None) is False
+
+
 def test_offline_device_is_reported_offline(logged_in):
     client, _, account = logged_in
     account.online = {"SER1": False}

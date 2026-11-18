@@ -42,8 +42,10 @@ async def _camera(ctx: AppContext, stream_id: str) -> Any:
 
 
 def _online(known: bool | None, health: dict[str, Any] | None) -> bool | None:
-    """Cloud device status wins; a stream that reports offline also marks it offline."""
-    if health and health["state"] == "offline":
+    """Cloud device status wins. A failing stream only marks the camera offline when the cloud
+    status is unknown: a camera the cloud reports online must stay visible so viewers keep
+    retrying through a stall or a refused session."""
+    if known is None and health and health["state"] == "offline":
         return False
     return known
 
