@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import base64
+import json
+import time
+
 import pytest
 from hikcloudstream import AuthenticationError, CaptchaRequiredError, StreamType
 
@@ -188,6 +192,101 @@ def test_cameras_relogs_in_when_listing_fails(state):
     account.login("u", "p")
     assert account.cameras() == ["cam"]
     assert len(logins) == 2
+
+
+def _jwt(expires_in: float) -> str:
+    claims = json.dumps({"exp": int(time.time() + expires_in)}).encode()
+    return "h." + base64.urlsafe_b64encode(claims).decode().rstrip("=") + ".s"
+
+
+def test_session_lifetime_reads_jwt_expiry_and_falls_back():
+    assert 86000 < hik_account.session_lifetime(_jwt(86400)) <= 86400
+    assert hik_account.session_lifetime(None) == hik_account.SESSION_FALLBACK_LIFETIME
+    assert hik_account.session_lifetime("not-a-jwt") == hik_account.SESSION_FALLBACK_LIFETIME
+
+
+def test_refresh_is_scheduled_before_the_token_expiry(state):
+    class TokenClient(FakeClient):
+        session_id = _jwt(86400)
+
+    account = HikAccount(state, client_factory=TokenClient)
+    account.login("u", "p")
+    due_in = account._refresh_at - time.monotonic()
+    assert 86400 - hik_account.SESSION_REFRESH_MARGIN - 60 < due_in < 86400
+
+
+def test_session_is_refreshed_when_due(state):
+    clients = []
+
+    class StatusClient(FakeClient):
+        def __init__(self):
+            super().__init__()
+            clients.append(self)
+
+        def request_json(self, method, path, params=None):
+            return {"deviceInfos": [{"deviceSerial": "A", "status": 1}]}
+
+    account = HikAccount(state, client_factory=StatusClient)
+    account.login("u", "p")
+    account._refresh_at = 0.0  # the refresh time (expiry minus margin) has come
+    assert account.online_map() == {"A": True}
+    assert len(clients) == 2 and clients[0].closed
+    account.cameras()
+    assert len(clients) == 2  # fresh session: no further login
+
+
+def test_failed_scheduled_refresh_keeps_the_session_and_backs_off(state):
+    account = HikAccount(state, client_factory=FakeClient)
+    account.login("u", "p")
+    first = account._client
+
+    def broken_factory():
+        raise RuntimeError("cloud down")
+
+    account._factory = broken_factory
+    account._refresh_at = 0.0
+    assert account.cameras() == ["cam"]
+    assert account._client is first
+    assert account._refresh_at > time.monotonic() + 60
+
+
+def test_all_offline_answer_is_rechecked_on_a_fresh_session(state):
+    clients = []
+
+    class StaleClient(FakeClient):
+        def __init__(self):
+            super().__init__()
+            self.stale = not clients  # only the first session went stale
+            clients.append(self)
+
+        def request_json(self, method, path, params=None):
+            status = 2 if self.stale else 1
+            return {"deviceInfos": [{"deviceSerial": "A", "status": status}]}
+
+    account = HikAccount(state, client_factory=StaleClient)
+    account.login("u", "p")
+    assert account.online_map() == {"A": True}
+    assert len(clients) == 2
+
+
+def test_truly_offline_cameras_do_not_cause_a_login_on_every_lookup(state, monkeypatch):
+    monkeypatch.setattr(hik_account, "RELOGIN_MIN_INTERVAL", 0.0)
+    clients = []
+
+    class OfflineClient(FakeClient):
+        def __init__(self):
+            super().__init__()
+            clients.append(self)
+
+        def request_json(self, method, path, params=None):
+            return {"deviceInfos": [{"deviceSerial": "A", "status": 2}]}
+
+    account = HikAccount(state, client_factory=OfflineClient)
+    account.login("u", "p")
+    for _ in range(3):
+        account._online_at = -1e9  # status cache expired
+        assert account.online_map() == {"A": False}
+    assert len(clients) == 2  # the login plus one recheck
 
 
 def test_classify():

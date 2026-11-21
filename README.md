@@ -48,6 +48,7 @@ phone --> app :8080 (login, API, static UI, allowlisted proxy) --> go2rtc (loopb
 - Every browser gets an H.264 transcode (`{id}_h264`, pinned to 1280x720) made by the app's own ffmpeg: the cloud switches resolution mid-stream, which broke HEVC passthrough on iPhone (green frame, then crash), and go2rtc's bundled ffmpeg 8 mis-decodes this camera's HEVC. `?stream=hevc` forces passthrough for debugging.
 - Playback prefers WebRTC (go2rtc media on a hostPort, TCP+UDP; candidates are the server's LAN address and the public hostname; signaling goes through the app's authenticated WebSocket) and falls back to MSE. Forward that port on the router so viewers on mobile data also get WebRTC; without it they stay on MSE. The watchdog counts painted frames (`requestVideoFrameCallback`) because a WebRTC stream's clock keeps running while the picture is frozen.
 - go2rtc listens on `127.0.0.1` only (its API can create `exec:` sources). The app proxies just the allowlisted routes and stream names after checking the session cookie and `Origin`.
+- The cloud login token lives 24 h, and past its expiry the cloud still answers, with every camera reported offline. The server therefore logs in again an hour before the expiry, and double-checks a "no camera online" answer on a fresh login (at most once per 10 minutes).
 - Hik-Connect failures: three auth failures in a row or a CAPTCHA stop all retries and show a banner with a "Thử lại" button (it re-runs the login). A temporarily unreachable cloud is retried with back-off.
 
 ## Run locally (Docker)
